@@ -14,7 +14,7 @@ use tracing::{debug, error, info, warn};
 use crate::config::Config;
 use crate::core::{
     ConnectionInfo, ContainerSummary, ImageSummary, NetworkSummary, NotificationLevel,
-    Result as ContuiResult, VolumeSummary,
+    Result as ContuiResult, Tab, VolumeSummary,
 };
 use crate::docker::exec::ExecStart;
 use crate::docker::{select_exec_command, DockerClient, LogEntry, SystemDiskUsage};
@@ -45,6 +45,10 @@ pub struct App {
     data_refresh_gate: RefreshGate,
     /// Last time we requested a data refresh
     last_data_refresh: std::time::Instant,
+    /// Pending result of a background `system df` fetch (System tab only)
+    disk_usage_rx: Option<mpsc::Receiver<Option<SystemDiskUsage>>>,
+    /// When disk usage was last requested; `None` forces a fetch
+    last_disk_usage_fetch: Option<std::time::Instant>,
     /// Exec runtime state
     exec_runtime: Option<ExecRuntime>,
     /// Channel receiver for exec start results
@@ -126,7 +130,6 @@ struct DataRefreshData {
     images: Option<Vec<ImageSummary>>,
     volumes: Option<Vec<VolumeSummary>>,
     networks: Option<Vec<NetworkSummary>>,
-    disk_usage: Option<SystemDiskUsage>,
 }
 
 impl DataRefreshData {
@@ -175,23 +178,11 @@ impl DataRefreshData {
             }
         };
 
-        let disk_usage = match client.get_disk_usage().await {
-            Ok(disk_usage) => {
-                debug!("Loaded disk usage");
-                Some(disk_usage)
-            }
-            Err(e) => {
-                warn!("Failed to load disk usage: {}", e);
-                None
-            }
-        };
-
         Self {
             containers,
             images,
             volumes,
             networks,
-            disk_usage,
         }
     }
 
@@ -207,9 +198,6 @@ impl DataRefreshData {
         }
         if let Some(networks) = self.networks {
             state.update_networks(networks);
-        }
-        if let Some(disk_usage) = self.disk_usage {
-            state.update_disk_usage(disk_usage);
         }
     }
 }
@@ -295,6 +283,8 @@ impl App {
             data_refresh_handle: None,
             data_refresh_gate: RefreshGate::default(),
             last_data_refresh: std::time::Instant::now(),
+            disk_usage_rx: None,
+            last_disk_usage_fetch: None,
             exec_runtime: None,
             exec_start_rx: None,
             exec_start_pending: None,
@@ -447,6 +437,10 @@ impl App {
                 if self.last_data_refresh.elapsed() >= data_refresh_rate {
                     self.request_data_refresh();
                 }
+
+                // Disk usage (`system df`) is slow on hosts with many or large
+                // volumes, so it is only fetched while the System tab is open.
+                self.refresh_disk_usage_if_needed().await;
 
                 // Check for exec start completion
                 self.check_exec_start().await;
@@ -840,6 +834,61 @@ impl App {
         });
     }
 
+    /// Fetch disk usage in the background while the System tab is visible,
+    /// and apply a finished fetch. Never blocks the UI or the regular refresh.
+    async fn refresh_disk_usage_if_needed(&mut self) {
+        const DISK_USAGE_INTERVAL: Duration = Duration::from_secs(10);
+
+        if let Some(rx) = &mut self.disk_usage_rx {
+            match tokio::time::timeout(Duration::from_millis(1), rx.recv()).await {
+                Ok(Some(Some(usage))) => {
+                    self.state.update_disk_usage(usage);
+                    self.disk_usage_rx = None;
+                }
+                Ok(_) => self.disk_usage_rx = None,
+                Err(_) => {}
+            }
+        }
+
+        if self.state.current_tab != Tab::System || self.disk_usage_rx.is_some() {
+            return;
+        }
+        let due = self
+            .last_disk_usage_fetch
+            .map(|t| t.elapsed() >= DISK_USAGE_INTERVAL)
+            .unwrap_or(true);
+        let Some(client) = self.docker_client.clone() else {
+            return;
+        };
+        if !due {
+            return;
+        }
+
+        self.last_disk_usage_fetch = Some(std::time::Instant::now());
+        let (tx, rx) = mpsc::channel(1);
+        self.disk_usage_rx = Some(rx);
+        // Same pattern as the other background fetches: own thread and runtime
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("Failed to create runtime");
+            rt.block_on(async move {
+                let usage = match client.get_disk_usage().await {
+                    Ok(usage) => {
+                        debug!("Loaded disk usage");
+                        Some(usage)
+                    }
+                    Err(e) => {
+                        warn!("Failed to load disk usage: {}", e);
+                        None
+                    }
+                };
+                let _ = tx.send(usage).await;
+            });
+        });
+    }
+
     /// Check for completed data refreshes
     async fn check_data_refresh(&mut self) {
         let mut received: Option<(bool, Option<DataRefreshResult>)> = None;
@@ -1153,7 +1202,8 @@ impl App {
 
                 self.state.add_notification(message, level);
 
-                // Refresh data to show updated disk usage
+                // Refresh data, and re-fetch disk usage right away
+                self.last_disk_usage_fetch = None;
                 self.request_data_refresh();
             }
         }
