@@ -238,6 +238,20 @@ Contui stores its configuration and logs in standard directories:
 - **macOS**: `~/Library/Application Support/com.contui.contui/`
 - **Windows**: `%APPDATA%\contui\contui\config\`
 
+### Theme
+
+Create `config.toml` in the config directory and set the theme under `[ui]`:
+
+```toml
+[ui]
+theme = "auto"     # default: follow the terminal's own colours (light or dark)
+# theme = "classic"  # fixed palette: black background, white/gray text
+```
+
+`auto` uses your terminal's foreground and background plus bold, dim and
+reverse video, and keeps green/red/yellow for status. `dark` is accepted as an
+alias for `classic`.
+
 ### Log File
 
 Logs are written to `/tmp/contui.log` for debugging purposes.

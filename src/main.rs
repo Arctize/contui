@@ -325,6 +325,7 @@ async fn run_tui(cli: Cli) -> Result<()> {
     }
 
     // Run the TUI application
+    contui::ui::theme::set_from_name(&config.ui.theme);
     let mut app = App::new(config).await?;
     app.run().await?;
 

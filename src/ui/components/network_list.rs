@@ -1,5 +1,6 @@
 //! Network list widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::Constraint,
     style::{Color, Modifier, Style},
@@ -113,11 +114,11 @@ impl NetworkListWidget {
             .map(|n| {
                 // Style for special networks
                 let style = if n.name == "bridge" || n.name == "host" || n.name == "none" {
-                    Style::default().fg(Color::Cyan)
+                    theme::accent()
                 } else if n.ingress {
                     Style::default().fg(Color::Magenta)
                 } else if n.internal {
-                    Style::default().fg(Color::Yellow)
+                    theme::warn()
                 } else {
                     Style::default()
                 };
@@ -149,11 +150,7 @@ impl NetworkListWidget {
                 .title(format!(" Networks ({}) ", self.networks.len()))
                 .borders(Borders::ALL),
         )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
+        .row_highlight_style(theme::selected())
         .highlight_symbol("▶ ")
     }
 

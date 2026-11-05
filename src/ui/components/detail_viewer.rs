@@ -1,7 +1,8 @@
 //! Container detail viewer component
 
+use crate::ui::theme;
 use ratatui::layout::{Alignment, Rect};
-use ratatui::style::{Color, Style};
+use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
@@ -24,8 +25,8 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan).bg(Color::Black))
-        .style(Style::default().bg(Color::Black));
+        .border_style(theme::accent().bg(theme::bg()))
+        .style(Style::default().bg(theme::bg()));
 
     let inner_area = block.inner(popup_area);
 
@@ -34,7 +35,7 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
         Some(ref d) => d,
         None => {
             let loading = Paragraph::new("Loading details...")
-                .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+                .style(theme::title().bg(theme::bg()))
                 .alignment(Alignment::Center)
                 .block(block);
             frame.render_widget(loading, popup_area);
@@ -45,9 +46,9 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
     // Build content lines
     let mut lines = vec![];
 
-    let label_style = Style::default().fg(Color::Gray).bg(Color::Black);
-    let value_style = Style::default().fg(Color::White).bg(Color::Black);
-    let accent_style = Style::default().fg(Color::Cyan).bg(Color::Black);
+    let label_style = theme::muted().bg(theme::bg());
+    let value_style = theme::text().bg(theme::bg());
+    let accent_style = theme::accent().bg(theme::bg());
 
     // Basic Info
     lines.push(Line::from(vec![
@@ -179,7 +180,7 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
 
     let paragraph = Paragraph::new(wrapped_lines)
         .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
-        .style(Style::default().bg(Color::Black))
+        .style(Style::default().bg(theme::bg()))
         .block(block);
 
     frame.render_widget(paragraph, popup_area);
@@ -307,11 +308,8 @@ mod tests {
 
     #[test]
     fn wrap_lines_wraps_and_indents() {
-        let label = Span::styled("Key:  ", Style::default().fg(Color::Gray));
-        let value = Span::styled(
-            "abcdefghijklmnopqrstuvwxyz",
-            Style::default().fg(Color::White),
-        );
+        let label = Span::styled("Key:  ", theme::muted());
+        let value = Span::styled("abcdefghijklmnopqrstuvwxyz", theme::text());
         let lines = vec![Line::from(vec![label, value])];
         let wrapped = wrap_lines_to_width(&lines, 10);
 

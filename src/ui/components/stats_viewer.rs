@@ -1,5 +1,6 @@
 //! Stats viewer component - bottom panel style
 
+use crate::ui::theme;
 use ratatui::layout::{Alignment, Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Style};
 use ratatui::text::{Line, Span};
@@ -21,7 +22,7 @@ pub fn render_stats_panel(frame: &mut Frame, area: Rect, state: &StatsViewState)
             if state.follow { "[LIVE]" } else { "[PAUSED]" }
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(theme::accent());
 
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
@@ -40,7 +41,7 @@ pub fn render_stats_panel(frame: &mut Frame, area: Rect, state: &StatsViewState)
         Some(ref s) => s,
         None => {
             let loading = Paragraph::new("Loading stats...")
-                .style(Style::default().fg(Color::Yellow))
+                .style(theme::title())
                 .alignment(Alignment::Center);
             frame.render_widget(loading, inner_area);
             return;
@@ -73,10 +74,10 @@ pub fn render_stats_panel(frame: &mut Frame, area: Rect, state: &StatsViewState)
         ])
         .split(columns[1]);
 
-    let label_style = Style::default().fg(Color::Gray);
-    let value_style = Style::default().fg(Color::White);
+    let label_style = theme::muted();
+    let value_style = theme::text();
     let bar_style = Style::default().fg(Color::Green);
-    let capacity_style = Style::default().fg(Color::Cyan);
+    let capacity_style = theme::accent();
 
     // CPU Usage
     let cpu_bar = render_bar(stats.cpu_percent, 15);

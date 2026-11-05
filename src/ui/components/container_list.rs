@@ -1,5 +1,6 @@
 //! Container list widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::Constraint,
     style::{Color, Modifier, Style},
@@ -133,11 +134,11 @@ impl ContainerListWidget {
 
                 let status_style = match c.state {
                     ContainerState::Running => Style::default().fg(Color::Green),
-                    ContainerState::Paused => Style::default().fg(Color::Yellow),
+                    ContainerState::Paused => theme::warn(),
                     ContainerState::Exited | ContainerState::Dead => {
                         Style::default().fg(Color::Red)
                     }
-                    _ => Style::default().fg(Color::Gray),
+                    _ => theme::muted(),
                 };
 
                 Row::new(vec![
@@ -166,11 +167,7 @@ impl ContainerListWidget {
                 .title(format!(" Containers ({}) ", self.containers.len()))
                 .borders(Borders::ALL),
         )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
+        .row_highlight_style(theme::selected())
         .highlight_symbol("▶ ")
     }
 

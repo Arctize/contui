@@ -250,7 +250,7 @@ fn default_log_tail() -> u64 {
 }
 
 fn default_theme() -> String {
-    "dark".to_string()
+    "auto".to_string()
 }
 
 fn default_cooldown() -> u64 {
