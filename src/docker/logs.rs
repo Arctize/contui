@@ -1,6 +1,6 @@
 //! Log streaming operations
 
-use bollard::container::LogsOptions;
+use bollard::query_parameters::LogsOptionsBuilder;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -31,14 +31,13 @@ impl DockerClient {
         } else {
             tail.to_string()
         };
-        let options = LogsOptions::<String> {
-            stdout: true,
-            stderr: true,
-            timestamps: true, // Enable timestamps for time filtering
-            follow: false,
-            tail: tail_str,
-            ..Default::default()
-        };
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .timestamps(true) // Enable timestamps for time filtering
+            .follow(false)
+            .tail(&tail_str)
+            .build();
 
         let mut stream = self.inner().logs(id, Some(options));
         let mut entries = Vec::new();
@@ -92,14 +91,13 @@ impl DockerClient {
     ) -> impl futures::Stream<Item = Result<LogEntry>> + '_ {
         use crate::core::ContuiError;
 
-        let options = LogsOptions {
-            stdout: true,
-            stderr: true,
-            timestamps: true,
-            follow,
-            tail: tail.to_string(),
-            ..Default::default()
-        };
+        let options = LogsOptionsBuilder::new()
+            .stdout(true)
+            .stderr(true)
+            .timestamps(true)
+            .follow(follow)
+            .tail(&tail.to_string())
+            .build();
 
         let stream = self.inner().logs(id, Some(options));
 
@@ -216,7 +214,7 @@ mod tests {
     #[tokio::test]
     #[ignore = "requires Docker daemon"]
     async fn test_fetch_logs_test_logger() {
-        use bollard::container::LogsOptions;
+        use bollard::query_parameters::LogsOptionsBuilder;
         use futures::StreamExt;
 
         let client = DockerClient::from_env().await.unwrap();
@@ -234,14 +232,13 @@ mod tests {
             );
 
             // Direct bollard call
-            let options = LogsOptions::<String> {
-                stdout: true,
-                stderr: true,
-                timestamps: true,
-                follow: false,
-                tail: "10".to_string(),
-                ..Default::default()
-            };
+            let options = LogsOptionsBuilder::new()
+                .stdout(true)
+                .stderr(true)
+                .timestamps(true)
+                .follow(false)
+                .tail("10")
+                .build();
 
             println!("Calling logs API with options: {:?}", options);
             let mut stream = client.inner().logs(&container.id, Some(options));

@@ -1,6 +1,6 @@
 //! Docker container stats
 
-use bollard::container::StatsOptions;
+use bollard::query_parameters::StatsOptionsBuilder;
 use futures::StreamExt;
 use std::time::Duration;
 use tokio::time::timeout;
@@ -27,10 +27,7 @@ pub struct StatsEntry {
 impl DockerClient {
     /// Stream stats from a container
     pub fn stream_stats(&self, id: &str) -> impl futures::Stream<Item = Result<StatsEntry>> + '_ {
-        let options = StatsOptions {
-            stream: true,
-            ..Default::default()
-        };
+        let options = StatsOptionsBuilder::new().stream(true).build();
 
         let stream = self.inner().stats(id, Some(options));
 
@@ -50,10 +47,7 @@ impl DockerClient {
     pub async fn fetch_stats(&self, id: &str) -> Result<StatsEntry> {
         debug!("Fetching stats for container {}", id);
 
-        let options = StatsOptions {
-            stream: false,
-            ..Default::default()
-        };
+        let options = StatsOptionsBuilder::new().stream(false).build();
 
         let mut stream = self.inner().stats(id, Some(options));
 
@@ -86,15 +80,26 @@ impl DockerClient {
     }
 
     /// Parse bollard stats into StatsEntry
-    fn parse_stats_entry(stats: bollard::container::Stats) -> Result<StatsEntry> {
+    fn parse_stats_entry(stats: bollard::models::ContainerStatsResponse) -> Result<StatsEntry> {
         let timestamp = chrono::Utc::now();
 
         // Calculate CPU percentage
-        let cpu_percent = calculate_cpu_percent(&stats.cpu_stats, &stats.precpu_stats);
+        let cpu_percent = match (&stats.cpu_stats, &stats.precpu_stats) {
+            (Some(cpu), Some(precpu)) => calculate_cpu_percent(cpu, precpu),
+            _ => 0.0,
+        };
 
         // Memory stats
-        let memory_usage = stats.memory_stats.usage.unwrap_or(0);
-        let memory_limit = stats.memory_stats.limit.unwrap_or(1);
+        let memory_usage = stats
+            .memory_stats
+            .as_ref()
+            .and_then(|m| m.usage)
+            .unwrap_or(0);
+        let memory_limit = stats
+            .memory_stats
+            .as_ref()
+            .and_then(|m| m.limit)
+            .unwrap_or(1);
         let memory_percent = if memory_limit > 0 {
             (memory_usage as f64 / memory_limit as f64) * 100.0
         } else {
@@ -107,7 +112,10 @@ impl DockerClient {
             .as_ref()
             .map(|networks| {
                 networks.values().fold((0u64, 0u64), |(rx, tx), net| {
-                    (rx + net.rx_bytes, tx + net.tx_bytes)
+                    (
+                        rx + net.rx_bytes.unwrap_or(0),
+                        tx + net.tx_bytes.unwrap_or(0),
+                    )
                 })
             })
             .unwrap_or((0, 0));
@@ -115,13 +123,14 @@ impl DockerClient {
         // Block I/O stats
         let (block_read, block_write) = stats
             .blkio_stats
-            .io_service_bytes_recursive
             .as_ref()
+            .and_then(|b| b.io_service_bytes_recursive.as_ref())
             .map(|io_stats| {
                 io_stats.iter().fold((0u64, 0u64), |(read, write), entry| {
-                    match entry.op.as_str() {
-                        "Read" => (read + entry.value, write),
-                        "Write" => (read, write + entry.value),
+                    let value = entry.value.unwrap_or(0);
+                    match entry.op.as_deref().unwrap_or("") {
+                        "Read" => (read + value, write),
+                        "Write" => (read, write + value),
                         _ => (read, write),
                     }
                 })
@@ -129,7 +138,11 @@ impl DockerClient {
             .unwrap_or((0, 0));
 
         // PIDs
-        let pids = stats.pids_stats.current.unwrap_or(0);
+        let pids = stats
+            .pids_stats
+            .as_ref()
+            .and_then(|p| p.current)
+            .unwrap_or(0);
 
         Ok(StatsEntry {
             timestamp,
@@ -148,13 +161,16 @@ impl DockerClient {
 
 /// Calculate CPU percentage from current and previous CPU stats
 fn calculate_cpu_percent(
-    cpu_stats: &bollard::container::CPUStats,
-    precpu_stats: &bollard::container::CPUStats,
+    cpu_stats: &bollard::models::ContainerCpuStats,
+    precpu_stats: &bollard::models::ContainerCpuStats,
 ) -> f64 {
-    let cpu_delta = cpu_stats
-        .cpu_usage
-        .total_usage
-        .saturating_sub(precpu_stats.cpu_usage.total_usage);
+    let total = |s: &bollard::models::ContainerCpuStats| {
+        s.cpu_usage
+            .as_ref()
+            .and_then(|u| u.total_usage)
+            .unwrap_or(0)
+    };
+    let cpu_delta = total(cpu_stats).saturating_sub(total(precpu_stats));
 
     let system_delta = match (cpu_stats.system_cpu_usage, precpu_stats.system_cpu_usage) {
         (Some(curr), Some(prev)) => curr.saturating_sub(prev),

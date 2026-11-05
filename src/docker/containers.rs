@@ -1,8 +1,8 @@
 //! Container operations
 
-use bollard::container::{
-    KillContainerOptions, ListContainersOptions, RemoveContainerOptions, RestartContainerOptions,
-    StopContainerOptions,
+use bollard::query_parameters::{
+    KillContainerOptionsBuilder, ListContainersOptionsBuilder, RemoveContainerOptionsBuilder,
+    RestartContainerOptionsBuilder, StopContainerOptionsBuilder,
 };
 use tracing::{debug, info, warn};
 
@@ -14,10 +14,7 @@ impl DockerClient {
     pub async fn list_containers(&self, all: bool) -> Result<Vec<ContainerSummary>> {
         debug!("Listing containers (all={})", all);
 
-        let options = ListContainersOptions::<String> {
-            all,
-            ..Default::default()
-        };
+        let options = ListContainersOptionsBuilder::new().all(all).build();
 
         let containers = self
             .inner()
@@ -38,7 +35,7 @@ impl DockerClient {
         info!("Starting container: {}", id);
 
         self.inner()
-            .start_container::<String>(id, None)
+            .start_container(id, None)
             .await
             .map_err(|e: bollard::errors::Error| {
                 DockerError::Container(format!("Failed to start {}: {}", id, e))
@@ -53,7 +50,7 @@ impl DockerClient {
         let timeout = timeout.unwrap_or(10);
         info!("Stopping container: {} (timeout={}s)", id, timeout);
 
-        let options = StopContainerOptions { t: timeout };
+        let options = StopContainerOptionsBuilder::new().t(timeout as i32).build();
 
         self.inner()
             .stop_container(id, Some(options))
@@ -71,7 +68,9 @@ impl DockerClient {
         let timeout = timeout.unwrap_or(10);
         info!("Restarting container: {} (timeout={}s)", id, timeout);
 
-        let options = RestartContainerOptions { t: timeout };
+        let options = RestartContainerOptionsBuilder::new()
+            .t(timeout as i32)
+            .build();
 
         self.inner()
             .restart_container(id, Some(options))
@@ -119,7 +118,7 @@ impl DockerClient {
         let signal = signal.unwrap_or("SIGKILL");
         warn!("Killing container: {} (signal={})", id, signal);
 
-        let options = KillContainerOptions { signal };
+        let options = KillContainerOptionsBuilder::new().signal(signal).build();
 
         self.inner()
             .kill_container(id, Some(options))
@@ -144,11 +143,11 @@ impl DockerClient {
             id, force, remove_volumes
         );
 
-        let options = RemoveContainerOptions {
-            v: remove_volumes,
-            force,
-            link: false,
-        };
+        let options = RemoveContainerOptionsBuilder::new()
+            .v(remove_volumes)
+            .force(force)
+            .link(false)
+            .build();
 
         self.inner()
             .remove_container(id, Some(options))
@@ -169,7 +168,7 @@ impl From<bollard::models::ContainerSummary> for ContainerSummary {
         let short_id = id.chars().take(12).collect();
 
         // Parse state from status string
-        let state = parse_container_state(c.state.as_deref());
+        let state = parse_container_state(c.state.as_ref().map(|s| s.as_ref()));
         let status = c.status.clone().unwrap_or_default();
 
         // Parse names (remove leading slashes)

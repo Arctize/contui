@@ -1,6 +1,7 @@
 //! Docker system operations (disk usage, prune)
 
 use bollard::models::SystemDataUsageResponse;
+use bollard::query_parameters::PruneContainersOptionsBuilder;
 use serde::{Deserialize, Serialize};
 use tracing::info;
 
@@ -135,7 +136,7 @@ use anyhow::Result;
 impl DockerClient {
     /// Get system disk usage information
     pub async fn get_disk_usage(&self) -> Result<SystemDiskUsage> {
-        let response = self.inner().df().await?;
+        let response = self.inner().df(None).await?;
         Ok(parse_disk_usage(response))
     }
 
@@ -159,7 +160,9 @@ impl DockerClient {
         // Create empty filters to prune all stopped containers
         let filters: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        let options = bollard::container::PruneContainersOptions { filters };
+        let options = PruneContainersOptionsBuilder::new()
+            .filters(&filters)
+            .build();
         let response = self.inner().prune_containers(Some(options)).await?;
         info!(
             "Prune containers response: {:?} deleted",
@@ -176,87 +179,31 @@ impl DockerClient {
     }
 }
 
-/// Parse SystemDataUsageResponse into our SystemDiskUsage
+/// Parse SystemDataUsageResponse into our SystemDiskUsage.
+///
+/// The engine (API >= 1.52) reports per-category summaries, so no per-item
+/// walk is needed.
 fn parse_disk_usage(response: SystemDataUsageResponse) -> SystemDiskUsage {
+    fn resource(total: Option<i64>, reclaimable: Option<i64>, count: Option<i64>) -> ResourceUsage {
+        ResourceUsage {
+            total: total.unwrap_or(0),
+            reclaimable: reclaimable.unwrap_or(0),
+            count: count.unwrap_or(0),
+        }
+    }
+
     let mut usage = SystemDiskUsage::default();
-
-    // Parse images
-    if let Some(images) = response.images {
-        for image in images {
-            usage.images.total += image.size;
-            usage.images.count += 1;
-            // Dangling images (untagged and not used by any container) are reclaimable
-            // Note: containers field can be -1 if not calculated
-            let is_unused = image.containers >= 0 && image.containers == 0;
-            let is_dangling = image.repo_tags.is_empty();
-            if is_unused && is_dangling {
-                usage.images.reclaimable += image.size;
-            }
-        }
+    if let Some(u) = response.image_usage {
+        usage.images = resource(u.total_size, u.reclaimable, u.total_count);
     }
-
-    // Parse containers
-    if let Some(containers) = response.containers {
-        for container in containers {
-            let size = container.size_root_fs.unwrap_or(0);
-            usage.containers.total += size;
-            usage.containers.count += 1;
-            // Stopped containers are reclaimable
-            if container.state.as_deref() != Some("running") {
-                usage.containers.reclaimable += size;
-            }
-        }
+    if let Some(u) = response.container_usage {
+        usage.containers = resource(u.total_size, u.reclaimable, u.total_count);
     }
-
-    // Parse volumes
-    if let Some(volumes) = response.volumes {
-        for volume in volumes {
-            // usage_data is only available for local volumes
-            let (size, ref_count) = volume
-                .usage_data
-                .as_ref()
-                .map(|u| (u.size, u.ref_count))
-                .unwrap_or((-1, -1));
-
-            // Only count size if it's available (not -1)
-            if size >= 0 {
-                usage.volumes.total += size;
-            }
-            usage.volumes.count += 1;
-
-            // Volumes not used by any container (ref_count == 0) are reclaimable
-            // Only mark as reclaimable if we know the size
-            if ref_count == 0 && size >= 0 {
-                usage.volumes.reclaimable += size;
-                info!(
-                    "Volume '{}' is reclaimable: size={}, ref_count={}",
-                    volume.name, size, ref_count
-                );
-            } else if size >= 0 {
-                info!(
-                    "Volume '{}' is NOT reclaimable: size={}, ref_count={}",
-                    volume.name, size, ref_count
-                );
-            } else {
-                info!(
-                    "Volume '{}' has no usage data (size={}, ref_count={})",
-                    volume.name, size, ref_count
-                );
-            }
-        }
+    if let Some(u) = response.volume_usage {
+        usage.volumes = resource(u.total_size, u.reclaimable, u.total_count);
     }
-
-    // Parse build cache
-    if let Some(build_cache) = response.build_cache {
-        for cache in build_cache {
-            let size = cache.size.unwrap_or(0);
-            usage.build_cache.total += size;
-            usage.build_cache.count += 1;
-            // Build cache is reclaimable, but bollard 0.18 doesn't support pruning it
-            // Mark as 0 reclaimable since we can't prune it via API
-            usage.build_cache.reclaimable += 0;
-        }
+    if let Some(u) = response.build_cache_usage {
+        usage.build_cache = resource(u.total_size, u.reclaimable, u.total_count);
     }
-
     usage
 }

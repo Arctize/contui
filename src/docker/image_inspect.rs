@@ -56,7 +56,7 @@ impl DockerClient {
         let exposed_ports = config
             .as_ref()
             .and_then(|c| c.exposed_ports.clone())
-            .map(|ports| ports.keys().cloned().collect())
+            .map(|ports| ports.into_iter().collect())
             .unwrap_or_default();
 
         // Extract env vars
