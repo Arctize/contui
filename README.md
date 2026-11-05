@@ -210,7 +210,10 @@ When inspecting containers (`i` key) or images:
 |-----|--------|
 | `↑/↓` or `PgUp/PgDn` | Scroll |
 | `Home/End` | Jump to top/bottom |
-| `q/Esc` | Close detail view |
+| `/` | Search (case-insensitive); type, then `Enter` to keep |
+| `n/N` | Next/previous match |
+| `Esc` | Clear the search, or close the detail view if there is none |
+| `q` | Close detail view |
 
 ### Prune Dialog
 

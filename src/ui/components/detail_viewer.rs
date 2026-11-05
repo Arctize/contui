@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 use ratatui::Frame;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
+use super::view_search;
 use crate::state::DetailViewState;
 
 /// Render the detail viewer overlay
@@ -42,7 +43,58 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
         }
     };
 
-    // Build content lines
+    let lines = build_lines(details);
+    let searched = view_search::layout(
+        &lines,
+        inner_area.width,
+        &state.search.query,
+        state.search.current,
+        wrap_lines_to_width,
+    );
+    let footer = view_search::footer(&state.search, searched.match_starts.len());
+
+    // The search status line takes the last row of the popup
+    let (content_area, footer_area) = match footer {
+        Some(_) if inner_area.height > 1 => (
+            Rect::new(
+                inner_area.x,
+                inner_area.y,
+                inner_area.width,
+                inner_area.height - 1,
+            ),
+            Some(Rect::new(
+                inner_area.x,
+                inner_area.y + inner_area.height - 1,
+                inner_area.width,
+                1,
+            )),
+        ),
+        _ => (inner_area, None),
+    };
+
+    // Calculate actual content height and clamp scroll offset (use wrapped height).
+    let wrapped_lines = searched.lines;
+    let content_height = wrapped_lines.len();
+    let max_scroll = content_height.saturating_sub(content_area.height as usize);
+    let scroll = state.scroll_offset.min(max_scroll);
+
+    frame.render_widget(block, popup_area);
+
+    let paragraph = Paragraph::new(wrapped_lines)
+        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
+        .style(Style::default().bg(Color::Black));
+    frame.render_widget(paragraph, content_area);
+
+    if let (Some(line), Some(area)) = (footer, footer_area) {
+        frame.render_widget(
+            Paragraph::new(line).style(Style::default().fg(Color::Yellow).bg(Color::Black)),
+            area,
+        );
+    }
+}
+
+/// Build the (unwrapped) content lines
+fn build_lines(details: &crate::docker::ContainerDetails) -> Vec<Line<'_>> {
     let mut lines = vec![];
 
     let label_style = Style::default().fg(Color::Gray).bg(Color::Black);
@@ -170,19 +222,20 @@ pub fn render_detail_viewer(frame: &mut Frame, area: Rect, state: &DetailViewSta
         }
     }
 
-    let wrapped_lines = wrap_lines_to_width(&lines, inner_area.width);
+    lines
+}
 
-    // Calculate actual content height and clamp scroll offset (use wrapped height).
-    let content_height = wrapped_lines.len();
-    let max_scroll = content_height.saturating_sub(inner_area.height as usize);
-    let scroll = state.scroll_offset.min(max_scroll);
-
-    let paragraph = Paragraph::new(wrapped_lines)
-        .scroll((u16::try_from(scroll).unwrap_or(u16::MAX), 0))
-        .style(Style::default().bg(Color::Black))
-        .block(block);
-
-    frame.render_widget(paragraph, popup_area);
+/// Wrapped start line of every search match for `query`, for jumping with n/N.
+/// `area` is the full screen area the viewer is rendered into.
+pub fn match_offsets(
+    details: &crate::docker::ContainerDetails,
+    query: &str,
+    area: Rect,
+) -> Vec<usize> {
+    let popup_area = centered_rect(80, 85, area);
+    let inner = Block::default().borders(Borders::ALL).inner(popup_area);
+    let lines = build_lines(details);
+    view_search::layout(&lines, inner.width, query, 0, wrap_lines_to_width).match_starts
 }
 
 fn wrap_lines_to_width(lines: &[Line], width: u16) -> Vec<Line<'static>> {

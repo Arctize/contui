@@ -436,8 +436,31 @@ impl UiApp {
         }
     }
 
+    /// The full screen area the overlays are laid out in
+    fn screen_area(&self) -> ratatui::layout::Rect {
+        let (width, height) =
+            ratatui::crossterm::terminal::size().unwrap_or(self.state.terminal_size);
+        ratatui::layout::Rect::new(0, 0, width, height)
+    }
+
     /// Handle detail view keys
     fn handle_detail_view_key(&mut self, key: KeyEvent) -> UiAction {
+        // Search (`/`, `n`, `N`, `Esc` to clear) comes first
+        let area = self.screen_area();
+        if let Some(view) = self.state.detail_view.as_mut() {
+            if let Some(details) = view.details.as_ref() {
+                let consumed = crate::ui::components::view_search::handle_key(
+                    &mut view.search,
+                    &mut view.scroll_offset,
+                    key,
+                    |q| crate::ui::components::detail_viewer::match_offsets(details, q, area),
+                );
+                if consumed {
+                    return UiAction::None;
+                }
+            }
+        }
+
         match key.code {
             // Exit detail view
             KeyCode::Char('q') | KeyCode::Esc => {
@@ -472,6 +495,22 @@ impl UiApp {
 
     /// Handle image detail view keys
     fn handle_image_detail_view_key(&mut self, key: KeyEvent) -> UiAction {
+        // Search (`/`, `n`, `N`, `Esc` to clear) comes first
+        let area = self.screen_area();
+        if let Some(view) = self.state.image_detail_view.as_mut() {
+            if let Some(details) = view.details.as_ref() {
+                let consumed = crate::ui::components::view_search::handle_key(
+                    &mut view.search,
+                    &mut view.scroll_offset,
+                    key,
+                    |q| crate::ui::components::image_detail_viewer::match_offsets(details, q, area),
+                );
+                if consumed {
+                    return UiAction::None;
+                }
+            }
+        }
+
         match key.code {
             // Exit image detail view
             KeyCode::Char('q') | KeyCode::Esc => {
@@ -1588,9 +1627,9 @@ impl UiApp {
         let base_text = if self.state.log_view.is_some() {
             Cow::Borrowed(" [↑/↓]Scroll [r]Refresh [f]Follow [/]Search [s]Save [q]Close ")
         } else if self.state.detail_view.is_some() {
-            Cow::Borrowed(" [↑/↓]Scroll [q]Close ")
+            Cow::Borrowed(" [↑/↓]Scroll [/]Search [q]Close ")
         } else if self.state.image_detail_view.is_some() {
-            Cow::Borrowed(" [↑/↓]Scroll [q]Close ")
+            Cow::Borrowed(" [↑/↓]Scroll [/]Search [q]Close ")
         } else if self.state.confirm_dialog.is_some() {
             Cow::Borrowed(" [y]Yes [n]No ")
         } else if self.state.show_help {
