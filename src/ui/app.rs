@@ -1,5 +1,6 @@
 //! UI Application logic
 
+use crate::ui::theme;
 use std::borrow::Cow;
 
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -1000,37 +1001,33 @@ impl UiApp {
         // Render dialog block with title
         let block = Block::default()
             .title(" ⚠️ Confirmation ")
-            .title_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(theme::title().add_modifier(Modifier::BOLD))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(theme::title());
         frame.render_widget(block, popup_area);
 
         // Render message
         let message = Paragraph::new(confirm.message.as_str())
-            .style(Style::default().fg(Color::White))
+            .style(theme::text())
             .wrap(Wrap { trim: true })
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(message, layout[0]);
 
         // Render buttons hint
         let buttons = Line::from(vec![
-            Span::styled("[", Style::default().fg(Color::Gray)),
+            Span::styled("[", theme::muted()),
             Span::styled(
                 "y",
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("] Yes   [", Style::default().fg(Color::Gray)),
+            Span::styled("] Yes   [", theme::muted()),
             Span::styled(
                 "n",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("] No", Style::default().fg(Color::Gray)),
+            Span::styled("] No", theme::muted()),
         ]);
         let buttons_para = Paragraph::new(buttons).alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(buttons_para, layout[2]);
@@ -1065,13 +1062,9 @@ impl UiApp {
         // Render dialog block with title
         let block = Block::default()
             .title(" Prune Unused Resources ")
-            .title_style(
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .title_style(theme::title().add_modifier(Modifier::BOLD))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow));
+            .border_style(theme::title());
         frame.render_widget(block, popup_area);
 
         // Title
@@ -1093,11 +1086,9 @@ impl UiApp {
             .map(|(idx, checked, label)| {
                 let checkbox = if checked { "[✓]" } else { "[ ]" };
                 let style = if idx == dialog.selected_index {
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD)
+                    theme::accent().add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    theme::text()
                 };
                 Line::from(vec![
                     Span::styled(format!("{} ", checkbox), style),
@@ -1111,19 +1102,19 @@ impl UiApp {
 
         // Buttons hint
         let hint = Line::from(vec![
-            Span::styled("[", Style::default().fg(Color::Gray)),
+            Span::styled("[", theme::muted()),
             Span::styled(
                 "Enter",
                 Style::default()
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD),
             ),
-            Span::styled("]Confirm [", Style::default().fg(Color::Gray)),
+            Span::styled("]Confirm [", theme::muted()),
             Span::styled(
                 "Esc",
                 Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
             ),
-            Span::styled("]Cancel", Style::default().fg(Color::Gray)),
+            Span::styled("]Cancel", theme::muted()),
         ]);
         let hint_para = Paragraph::new(hint).alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(hint_para, layout[4]);
@@ -1179,22 +1170,12 @@ impl UiApp {
         };
 
         let header_spans = vec![
-            Span::styled(
-                " 🐳 Contui ",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                format!("v{} ", env!("CARGO_PKG_VERSION")),
-                Style::default().fg(Color::Gray),
-            ),
+            Span::styled(" 🐳 Contui ", theme::accent().add_modifier(Modifier::BOLD)),
+            Span::styled(format!("v{} ", env!("CARGO_PKG_VERSION")), theme::muted()),
             Span::raw("| "),
             Span::styled(
                 self.state.current_tab.name(),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                theme::title().add_modifier(Modifier::BOLD),
             ),
             Span::raw(" | "),
             Span::styled(status_indicator.0, Style::default().fg(status_indicator.1)),
@@ -1210,7 +1191,7 @@ impl UiApp {
 
         let header = Line::from(header_spans);
         frame.render_widget(
-            Paragraph::new(header).style(Style::default().bg(Color::Black)),
+            Paragraph::new(header).style(Style::default().bg(theme::bg())),
             area,
         );
     }
@@ -1254,7 +1235,7 @@ impl UiApp {
     /// Render volumes view
     fn render_volumes_view(&self, frame: &mut Frame, area: Rect) {
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         let mut widget = crate::ui::components::VolumeListWidget::new(self.state.volumes.clone());
@@ -1270,7 +1251,7 @@ impl UiApp {
     /// Render networks view
     fn render_networks_view(&self, frame: &mut Frame, area: Rect) {
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         let mut widget = crate::ui::components::NetworkListWidget::new(self.state.networks.clone());
@@ -1286,7 +1267,7 @@ impl UiApp {
     /// Render images view
     fn render_images_view(&self, frame: &mut Frame, area: Rect) {
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         // Create image list widget
@@ -1305,7 +1286,7 @@ impl UiApp {
         use crate::ui::components::{ContainerDetailPanel, SplitLayout};
 
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         // Split area: 60% for list, 40% for detail
@@ -1375,7 +1356,7 @@ impl UiApp {
     /// Render the sidebar with tabs
     fn render_sidebar(&self, frame: &mut Frame, area: Rect) {
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         let mut lines = vec![];
@@ -1390,7 +1371,7 @@ impl UiApp {
                     .fg(Color::Green)
                     .add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::Gray)
+                theme::muted()
             };
 
             // Format: "▶ 1:Containers" or "  2:Images"
@@ -1406,7 +1387,7 @@ impl UiApp {
         let sidebar = Paragraph::new(Text::from(lines)).block(
             Block::default()
                 .borders(Borders::RIGHT)
-                .border_style(Color::DarkGray),
+                .border_style(theme::subtle()),
         );
 
         frame.render_widget(sidebar, area);
@@ -1425,13 +1406,13 @@ impl UiApp {
     /// Render simple tabs (Images, Volumes, etc.)
     fn render_simple_tab(&self, frame: &mut Frame, area: Rect) {
         // Fill area with black background first
-        let bg = Block::default().style(Style::default().bg(Color::Black));
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
         frame.render_widget(bg, area);
 
         let block = Block::default()
             .title(self.state.current_tab.name())
             .borders(Borders::ALL)
-            .border_style(Color::DarkGray);
+            .border_style(theme::subtle());
 
         let inner_area = block.inner(area);
         frame.render_widget(block, area);
@@ -1482,15 +1463,15 @@ impl UiApp {
         // System info section
         let info_lines = vec![
             Line::from(vec![
-                Span::styled("Docker Version:   ", Style::default().fg(Color::Cyan)),
+                Span::styled("Docker Version:   ", theme::accent()),
                 Span::raw(&self.state.connection_info.version),
             ]),
             Line::from(vec![
-                Span::styled("API Version:      ", Style::default().fg(Color::Cyan)),
+                Span::styled("API Version:      ", theme::accent()),
                 Span::raw(&self.state.connection_info.api_version),
             ]),
             Line::from(vec![
-                Span::styled("OS/Arch:          ", Style::default().fg(Color::Cyan)),
+                Span::styled("OS/Arch:          ", theme::accent()),
                 Span::raw(format!(
                     "{}/{}",
                     self.state.connection_info.os, self.state.connection_info.arch
@@ -1511,7 +1492,7 @@ impl UiApp {
 
             vec![
                 Line::from(vec![
-                    Span::styled("Images:           ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Images:           ", theme::accent()),
                     Span::raw(format!(
                         "{}  (Reclaimable: {})",
                         format_bytes_size(usage.images.total),
@@ -1519,7 +1500,7 @@ impl UiApp {
                     )),
                 ]),
                 Line::from(vec![
-                    Span::styled("Containers:       ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Containers:       ", theme::accent()),
                     Span::raw(format!(
                         "{}  (Reclaimable: {})",
                         format_bytes_size(usage.containers.total),
@@ -1527,7 +1508,7 @@ impl UiApp {
                     )),
                 ]),
                 Line::from(vec![
-                    Span::styled("Local Volumes:    ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Local Volumes:    ", theme::accent()),
                     Span::raw(format!(
                         "{}  (Reclaimable: {})",
                         format_bytes_size(usage.volumes.total),
@@ -1535,7 +1516,7 @@ impl UiApp {
                     )),
                 ]),
                 Line::from(vec![
-                    Span::styled("Build Cache:      ", Style::default().fg(Color::Cyan)),
+                    Span::styled("Build Cache:      ", theme::accent()),
                     Span::raw(format!(
                         "{}  (Reclaimable: {})",
                         format_bytes_size(usage.build_cache.total),
@@ -1558,14 +1539,14 @@ impl UiApp {
                     ),
                 ]),
                 Line::from(vec![
-                    Span::styled("Total Reclaimable:", Style::default().fg(Color::Yellow)),
+                    Span::styled("Total Reclaimable:", theme::title()),
                     Span::styled(
                         format!(
                             " {}  [{:.0}% can be freed]",
                             format_bytes_size(total_reclaimable),
                             reclaimable_pct
                         ),
-                        Style::default().fg(Color::Yellow),
+                        theme::title(),
                     ),
                 ]),
             ]
@@ -1578,8 +1559,7 @@ impl UiApp {
         frame.render_widget(disk_para, layout[1]);
 
         // Actions hint
-        let hint = Paragraph::new("Actions: [p]Prune unused resources")
-            .style(Style::default().fg(Color::Gray));
+        let hint = Paragraph::new("Actions: [p]Prune unused resources").style(theme::muted());
         frame.render_widget(hint, layout[2]);
     }
 
@@ -1620,11 +1600,9 @@ impl UiApp {
         };
 
         let style = if self.state.confirm_dialog.is_some() {
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD)
+            theme::title().add_modifier(Modifier::BOLD)
         } else {
-            Style::default().fg(Color::Gray).bg(Color::Black)
+            theme::muted().bg(theme::bg())
         };
 
         let footer = Paragraph::new(help_text).style(style);
@@ -1716,9 +1694,9 @@ Press any key to close...
                 Block::default()
                     .title(" Help (Press any key to close) ")
                     .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Yellow)),
+                    .border_style(theme::title()),
             )
-            .style(Style::default().fg(Color::White))
+            .style(theme::text())
             .wrap(Wrap { trim: true });
 
         frame.render_widget(help, popup_area);

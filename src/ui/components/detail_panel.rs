@@ -1,5 +1,6 @@
 //! Container detail panel widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
@@ -29,8 +30,8 @@ impl ContainerDetailPanel {
                             .unwrap_or_else(|| "Container".to_string())
                     ))
                     .borders(Borders::ALL)
-                    .border_style(Color::DarkGray)
-                    .style(Style::default().bg(Color::Black)),
+                    .border_style(theme::subtle())
+                    .style(Style::default().bg(theme::bg())),
             )
             .wrap(Wrap { trim: true })
     }
@@ -44,7 +45,7 @@ impl ContainerDetailPanel {
             ContainerState::Running => Color::Green,
             ContainerState::Paused => Color::Yellow,
             ContainerState::Exited | ContainerState::Dead => Color::Red,
-            _ => Color::Gray,
+            _ => theme::muted().fg.unwrap_or(Color::Reset),
         };
 
         lines.push(Line::from(vec![
@@ -123,7 +124,7 @@ impl ContainerDetailPanel {
         lines.push(Line::from(""));
         lines.push(Line::from(Span::styled(
             "Actions: [s] Start/Stop  [r] Restart  [p] Pause  [k] Kill  [d] Delete  [l] Logs",
-            Style::default().fg(Color::Cyan),
+            theme::accent(),
         )));
 
         lines

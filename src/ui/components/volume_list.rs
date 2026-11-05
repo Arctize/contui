@@ -1,8 +1,9 @@
 //! Volume list widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::Constraint,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Row, Table, TableState},
 };
@@ -113,7 +114,7 @@ impl VolumeListWidget {
             .map(|v| {
                 // Style for unused volumes
                 let style = if v.in_use.is_empty() {
-                    Style::default().fg(Color::Yellow)
+                    theme::warn()
                 } else {
                     Style::default()
                 };
@@ -151,11 +152,7 @@ impl VolumeListWidget {
                 .title(format!(" Volumes ({}) ", self.volumes.len()))
                 .borders(Borders::ALL),
         )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
+        .row_highlight_style(theme::selected())
         .highlight_symbol("▶ ")
     }
 

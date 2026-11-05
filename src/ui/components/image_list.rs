@@ -1,8 +1,9 @@
 //! Image list widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::Constraint,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Row, Table, TableState},
 };
@@ -146,7 +147,7 @@ impl ImageListWidget {
 
                 // Style for dangling images
                 let style = if i.dangling {
-                    Style::default().fg(Color::Yellow)
+                    theme::warn()
                 } else {
                     Style::default()
                 };
@@ -179,11 +180,7 @@ impl ImageListWidget {
                 .title(format!(" Images ({}) ", self.images.len()))
                 .borders(Borders::ALL),
         )
-        .row_highlight_style(
-            Style::default()
-                .bg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
-        )
+        .row_highlight_style(theme::selected())
         .highlight_symbol("▶ ")
     }
 

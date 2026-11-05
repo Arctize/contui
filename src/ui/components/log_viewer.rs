@@ -1,5 +1,6 @@
 //! Log viewer widget
 
+use crate::ui::theme;
 use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
@@ -83,14 +84,14 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Cyan))
-        .style(Style::default().bg(Color::Black));
+        .border_style(theme::accent())
+        .style(Style::default().bg(theme::bg()));
 
     let inner_area = block.inner(content_area);
     frame.render_widget(block, content_area);
 
     // CRITICAL: Fill inner area with black background first to prevent ghost text
-    let bg_fill = Block::default().style(Style::default().bg(Color::Black));
+    let bg_fill = Block::default().style(Style::default().bg(theme::bg()));
     frame.render_widget(bg_fill, inner_area);
 
     // Render search input if active
@@ -111,10 +112,10 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
         );
         let search_block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow))
-            .style(Style::default().bg(Color::Black));
+            .border_style(theme::title())
+            .style(Style::default().bg(theme::bg()));
         let search_para = Paragraph::new(search_text)
-            .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+            .style(theme::title().bg(theme::bg()))
             .block(search_block);
         frame.render_widget(search_para, search_area);
     }
@@ -148,7 +149,7 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
     // Show message if no logs
     if state.logs.is_empty() {
         let no_logs = Paragraph::new("Press 'r' to load logs | 'q' to close | 'f' to toggle follow | '/' to search | 0-3 filter")
-            .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+            .style(theme::title().bg(theme::bg()))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(no_logs, inner_area);
         return;
@@ -156,7 +157,7 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
 
     if total_lines == 0 {
         let no_filtered_logs = Paragraph::new("No logs match current filter | Press 0 to show all")
-            .style(Style::default().fg(Color::Yellow).bg(Color::Black))
+            .style(theme::title().bg(theme::bg()))
             .alignment(ratatui::layout::Alignment::Center);
         frame.render_widget(no_filtered_logs, inner_area);
         return;
@@ -190,21 +191,18 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
             let mut style = if entry.is_stderr {
                 Style::default().fg(Color::Red)
             } else {
-                Style::default().fg(Color::White)
+                theme::text()
             };
 
             // Highlight search matches
             if is_current_match {
-                style = style.bg(Color::Magenta).fg(Color::Black);
+                style = style.patch(theme::search_match(true));
             } else if is_match {
-                style = style.bg(Color::Yellow).fg(Color::Black);
+                style = style.patch(theme::search_match(false));
             }
 
             Line::from(vec![
-                Span::styled(
-                    format!("{} ", timestamp),
-                    Style::default().fg(Color::DarkGray),
-                ),
+                Span::styled(format!("{} ", timestamp), theme::subtle()),
                 Span::styled(entry.message.clone(), style),
             ])
         })
@@ -212,7 +210,7 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
 
     let paragraph = Paragraph::new(log_lines)
         .wrap(Wrap { trim: false })
-        .style(Style::default().bg(Color::Black));
+        .style(Style::default().bg(theme::bg()));
 
     frame.render_widget(paragraph, inner_area);
 
@@ -224,8 +222,7 @@ pub fn render_log_viewer(frame: &mut Frame, area: Rect, state: &LogViewState) {
         // Ensure scroll indicator doesn't overlap border
         if scroll_area.x > popup_area.x + 1 {
             frame.render_widget(
-                Paragraph::new(scroll_indicator)
-                    .style(Style::default().fg(Color::DarkGray).bg(Color::Black)),
+                Paragraph::new(scroll_indicator).style(theme::subtle().bg(theme::bg())),
                 scroll_area,
             );
         }

@@ -1,5 +1,6 @@
 //! Exec viewer component - bottom panel style
 
+use crate::ui::theme;
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Style};
 use ratatui::text::Line;
@@ -20,16 +21,16 @@ pub fn render_exec_panel(frame: &mut Frame, area: Rect, state: &ExecViewState) {
         state.status
     );
 
-    let border_color = if state.focus {
-        Color::Magenta
+    let border_style = if state.focus {
+        Style::default().fg(Color::Magenta)
     } else {
-        Color::DarkGray
+        theme::subtle()
     };
 
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color));
+        .border_style(border_style);
 
     let inner_area = block.inner(area);
     frame.render_widget(block, area);
