@@ -9,6 +9,7 @@ pub mod image_list;
 pub mod log_viewer;
 pub mod network_list;
 pub mod stats_viewer;
+pub mod view_search;
 pub mod volume_list;
 
 pub use container_list::ContainerListWidget;

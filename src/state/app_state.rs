@@ -115,6 +115,16 @@ pub struct ExecViewState {
     pub cursor: Option<(u16, u16)>,
 }
 
+/// Search state shared by the detail viewers
+#[derive(Debug, Clone, Default)]
+pub struct ViewSearch {
+    /// The query is being typed
+    pub input: bool,
+    pub query: String,
+    /// Ordinal of the current match (taken modulo the number of matches)
+    pub current: usize,
+}
+
 /// Detail view state
 #[derive(Debug, Clone)]
 pub struct DetailViewState {
@@ -122,6 +132,7 @@ pub struct DetailViewState {
     pub container_name: String,
     pub details: Option<crate::docker::ContainerDetails>,
     pub scroll_offset: usize,
+    pub search: ViewSearch,
 }
 
 /// Image detail view state
@@ -131,6 +142,7 @@ pub struct ImageDetailViewState {
     pub image_name: String,
     pub details: Option<crate::docker::ImageDetails>,
     pub scroll_offset: usize,
+    pub search: ViewSearch,
 }
 
 /// Prune dialog state
@@ -728,6 +740,7 @@ impl AppState {
             container_name,
             details: None,
             scroll_offset: 0,
+            search: ViewSearch::default(),
         });
     }
 
@@ -766,6 +779,7 @@ impl AppState {
             image_name,
             details: None,
             scroll_offset: 0,
+            search: ViewSearch::default(),
         });
     }
 
