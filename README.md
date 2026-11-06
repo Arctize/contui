@@ -137,6 +137,7 @@ contui --help
 | `m` | Toggle stats panel |
 | `i` | Inspect container details |
 | `x` | Exec into container |
+| `g` | Toggle grouping by compose project (a dim STACK column names each project once) |
 
 ### Images Tab
 
