@@ -278,8 +278,10 @@ Contui connects to Docker using the following priority:
 # Via TCP
 contui --host tcp://192.168.1.100:2375
 
-# Via SSH
-cargo run -- --host ssh://user@remote-host
+# Via SSH (needs the docker CLI on the remote host; uses your ssh keys and
+# known_hosts, so connect once with `ssh user@remote-host` first)
+contui --host ssh://user@remote-host
+contui --host user@remote-host      # no scheme means ssh
 
 # Set environment variable
 export DOCKER_HOST=tcp://192.168.1.100:2375
