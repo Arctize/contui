@@ -239,6 +239,8 @@ pub enum UiAction {
     ExecContainer(String),
     /// Start container then exec
     StartContainerAndExec(String),
+    /// Attach to a container's main process
+    AttachContainer(String),
     /// Send input to exec session
     ExecInput(Vec<u8>),
     /// Show details for an image

@@ -113,6 +113,8 @@ pub struct ExecViewState {
     pub status: String,
     pub screen_lines: Vec<String>,
     pub cursor: Option<(u16, u16)>,
+    /// The session is an attach to the main process, not an exec
+    pub attach: bool,
 }
 
 /// Detail view state
@@ -678,6 +680,7 @@ impl AppState {
             status: "Starting".to_string(),
             screen_lines: vec![],
             cursor: None,
+            attach: false,
         });
         // Avoid stacking bottom panels
         self.stats_view = None;
@@ -686,6 +689,13 @@ impl AppState {
     /// Close exec view
     pub fn close_exec_view(&mut self) {
         self.exec_view = None;
+    }
+
+    /// Mark the exec pane as an attach session
+    pub fn set_exec_attach(&mut self, attach: bool) {
+        if let Some(exec_view) = &mut self.exec_view {
+            exec_view.attach = attach;
+        }
     }
 
     /// Toggle exec focus

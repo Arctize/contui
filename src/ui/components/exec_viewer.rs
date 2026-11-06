@@ -14,7 +14,8 @@ pub const EXEC_PANEL_HEIGHT: u16 = 10;
 /// Render the exec viewer as a bottom panel
 pub fn render_exec_panel(frame: &mut Frame, area: Rect, state: &ExecViewState) {
     let title = format!(
-        " Exec: {} [{}] {} ",
+        " {}: {} [{}] {} ",
+        if state.attach { "Attach" } else { "Exec" },
         state.container_name,
         if state.focus { "FOCUS" } else { "UI" },
         state.status
@@ -78,6 +79,7 @@ mod tests {
             status: "Running".into(),
             screen_lines: vec!["hello".into()],
             cursor: None,
+            attach: false,
         };
 
         terminal
@@ -100,6 +102,7 @@ mod tests {
             status: "Starting |".into(),
             screen_lines: vec![],
             cursor: None,
+            attach: false,
         };
 
         terminal
@@ -132,6 +135,7 @@ mod tests {
             status: "Running".into(),
             screen_lines: vec!["hello".into()],
             cursor: Some((1, 2)),
+            attach: false,
         };
 
         terminal

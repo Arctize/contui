@@ -137,6 +137,7 @@ contui --help
 | `m` | Toggle stats panel |
 | `i` | Inspect container details |
 | `x` | Exec into container |
+| `a` | Attach to the container's main process (detach with `Ctrl+P` `Ctrl+Q`; `Ctrl+C` reaches the process) |
 
 ### Images Tab
 
