@@ -1,5 +1,6 @@
 //! UI components
 
+pub mod compose_list;
 pub mod container_list;
 pub mod detail_panel;
 pub mod detail_viewer;
