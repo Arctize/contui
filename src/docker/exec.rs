@@ -2,8 +2,9 @@
 
 use std::pin::Pin;
 
-use bollard::container::{AttachContainerOptions, LogOutput, ResizeContainerTtyOptions};
+use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecOptions, StartExecResults};
+use bollard::query_parameters::{AttachContainerOptionsBuilder, ResizeContainerTTYOptionsBuilder};
 use futures::Stream;
 use futures::StreamExt;
 use tokio::io::AsyncWrite;
@@ -170,14 +171,14 @@ impl DockerClient {
         cols: u16,
         rows: u16,
     ) -> Result<ExecStart> {
-        let options = AttachContainerOptions::<String> {
-            stdin: Some(true),
-            stdout: Some(true),
-            stderr: Some(true),
-            stream: Some(true),
-            logs: Some(false),
-            detach_keys: Some("ctrl-p,ctrl-q".to_string()),
-        };
+        let options = AttachContainerOptionsBuilder::new()
+            .stdin(true)
+            .stdout(true)
+            .stderr(true)
+            .stream(true)
+            .logs(false)
+            .detach_keys("ctrl-p,ctrl-q")
+            .build();
 
         let attached = self
             .inner()
@@ -210,10 +211,10 @@ impl DockerClient {
         self.inner()
             .resize_container_tty(
                 container_id,
-                ResizeContainerTtyOptions {
-                    width: cols,
-                    height: rows,
-                },
+                ResizeContainerTTYOptionsBuilder::new()
+                    .w(i32::from(cols))
+                    .h(i32::from(rows))
+                    .build(),
             )
             .await
             .map_err(|e| DockerError::Container(format!("Failed to resize: {e}")))?;
