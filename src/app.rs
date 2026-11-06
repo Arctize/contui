@@ -304,11 +304,8 @@ impl App {
 
     /// Connect to Docker
     async fn connect_docker(config: &Config) -> Result<(DockerClient, ConnectionInfo)> {
-        let client = if let Some(host) = &config.docker.host {
-            DockerClient::with_host(host).await?
-        } else {
-            DockerClient::from_env().await?
-        };
+        let client =
+            DockerClient::connect(config.docker.host.as_deref(), config.docker.runtime).await?;
 
         let info = client.connection_info().clone();
         Ok((client, info))

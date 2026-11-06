@@ -94,11 +94,25 @@ pub struct LayoutConfig {
     pub show_footer: bool,
 }
 
+/// Which container engine to talk to
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum Runtime {
+    /// Use docker if its socket exists, otherwise podman
+    #[default]
+    Auto,
+    Docker,
+    Podman,
+}
+
 /// Docker connection settings
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DockerConfig {
     #[serde(default)]
     pub host: Option<String>,
+    /// Container engine for local connections (`auto`, `docker` or `podman`)
+    #[serde(default)]
+    pub runtime: Runtime,
     #[serde(default)]
     pub tls_verify: bool,
     #[serde(default)]
@@ -279,6 +293,16 @@ fn default_update_timeout() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn docker_runtime_parses_from_config() {
+        assert_eq!(DockerConfig::default().runtime, Runtime::Auto);
+        let c: DockerConfig = toml::from_str("runtime = \"podman\"").unwrap();
+        assert_eq!(c.runtime, Runtime::Podman);
+        let c: DockerConfig = toml::from_str("runtime = \"docker\"").unwrap();
+        assert_eq!(c.runtime, Runtime::Docker);
+        assert!(toml::from_str::<DockerConfig>("runtime = \"lxc\"").is_err());
+    }
+
     use super::*;
 
     #[test]

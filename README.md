@@ -238,6 +238,22 @@ Contui stores its configuration and logs in standard directories:
 - **macOS**: `~/Library/Application Support/com.contui.contui/`
 - **Windows**: `%APPDATA%\contui\contui\config\`
 
+### Podman
+
+Contui also works with Podman through its Docker-compatible API socket. With
+no `--host`, `--runtime auto` (the default) uses the docker socket if there is
+one and otherwise `$XDG_RUNTIME_DIR/podman/podman.sock` or
+`/run/podman/podman.sock`. Force an engine with `--runtime docker|podman` or
+in `config.toml`:
+
+```toml
+[docker]
+runtime = "podman"
+```
+
+The Podman service must be running, e.g. `systemctl --user enable --now
+podman.socket` (rootless) or `systemctl enable --now podman.socket` (rootful).
+
 ### Log File
 
 Logs are written to `/tmp/contui.log` for debugging purposes.
