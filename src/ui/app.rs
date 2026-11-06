@@ -190,6 +190,9 @@ impl UiApp {
             KeyCode::Char('x') if self.state.current_tab == Tab::Containers => {
                 self.handle_exec_action()
             }
+            KeyCode::Char('a') if self.state.current_tab == Tab::Containers => {
+                self.handle_attach_action()
+            }
             // Toggle stats follow when stats panel is visible
             KeyCode::Char('f') if self.state.stats_view.is_some() => {
                 self.state.toggle_stats_follow();
@@ -801,6 +804,27 @@ impl UiApp {
             UiAction::None
         }
     }
+    /// Handle attach action: attach to the main process of a running container
+    fn handle_attach_action(&mut self) -> UiAction {
+        match self
+            .state
+            .containers
+            .get(self.state.container_list_selected)
+        {
+            Some(container) if container.state == ContainerState::Running => {
+                UiAction::AttachContainer(container.id.clone())
+            }
+            Some(_) => {
+                self.state.add_notification(
+                    "Container is not running",
+                    crate::core::NotificationLevel::Warning,
+                );
+                UiAction::None
+            }
+            None => UiAction::None,
+        }
+    }
+
     /// Handle inspect action
     fn handle_inspect_action(&mut self) -> UiAction {
         if let Some(container) = self
@@ -1615,7 +1639,7 @@ impl UiApp {
         } else if self.state.show_help {
             Cow::Borrowed(" Press any key to close help ")
         } else if self.state.current_tab == Tab::Containers && !self.state.containers.is_empty() {
-            Cow::Borrowed(" [↑/↓]Select [s]Start [p]Pause [r]Restart [k]Kill [d]Delete [l]Logs [m]Stats [i]Inspect [x]Exec [?]Help [q]Quit ")
+            Cow::Borrowed(" [↑/↓]Select [s]Start [p]Pause [r]Restart [k]Kill [d]Delete [l]Logs [m]Stats [i]Inspect [x]Exec [a]Attach [?]Help [q]Quit ")
         } else if self.state.current_tab == Tab::Images && !self.state.images.is_empty() {
             Cow::Borrowed(" [↑/↓]Select [d]Delete [p]Prune [i]Inspect [?]Help [q]Quit ")
         } else if self.state.current_tab == Tab::Volumes && !self.state.volumes.is_empty() {
@@ -1673,6 +1697,7 @@ Containers Tab:
   m                Toggle stats panel
   i                Inspect container (detailed info)
   x                Exec into container
+  a                Attach to the container's main process (detach: ctrl-p ctrl-q)
 
 Images Tab:
   ↑/↓ or j/k       Select image
@@ -1868,6 +1893,34 @@ mod tests {
     }
 
     #[test]
+    fn attach_key_attaches_only_to_running_containers() {
+        let press = |app: &mut UiApp| {
+            app.handle_event(crossterm::event::Event::Key(
+                crossterm::event::KeyEvent::from(crossterm::event::KeyCode::Char('a')),
+            ))
+        };
+        let mut state = AppState::default();
+        state.current_tab = Tab::Containers;
+        state.containers = vec![crate::core::ContainerSummary {
+            id: "abc".to_string(),
+            state: crate::core::ContainerState::Running,
+            ..Default::default()
+        }];
+        let mut app = UiApp::new(state);
+        assert!(matches!(
+            press(&mut app),
+            UiAction::AttachContainer(id) if id == "abc"
+        ));
+
+        app.state.containers[0].state = crate::core::ContainerState::Exited;
+        assert!(matches!(press(&mut app), UiAction::None));
+        assert_eq!(
+            app.state.notifications.last().map(|n| n.message.as_str()),
+            Some("Container is not running")
+        );
+    }
+
+    #[test]
     fn exec_key_triggers_action() {
         let mut state = AppState::default();
         state.current_tab = Tab::Containers;
@@ -1900,6 +1953,7 @@ mod tests {
             status: "Starting".into(),
             screen_lines: vec![],
             cursor: None,
+            attach: false,
         });
 
         let app = UiApp::new(state);

@@ -66,6 +66,8 @@ enum ExecOutput {
 
 struct ExecRuntime {
     exec_id: String,
+    /// Attached to the container's main process (resize goes to the container TTY)
+    attach: bool,
     container_id: String,
     input: Pin<Box<dyn tokio::io::AsyncWrite + Send>>,
     parser: vt100::Parser,
@@ -567,6 +569,9 @@ impl App {
             }
             UiAction::ExecContainer(id) => {
                 self.start_exec_for_container(&id).await;
+            }
+            UiAction::AttachContainer(id) => {
+                self.start_session_for_container(&id, true).await;
             }
             UiAction::StartContainerAndExec(id) => {
                 self.start_container(&id).await;
@@ -1528,6 +1533,11 @@ impl App {
     // ==================== Exec Handling ====================
 
     async fn start_exec_for_container(&mut self, id: &str) {
+        self.start_session_for_container(id, false).await;
+    }
+
+    /// Start (or toggle off) an exec shell or an attach session for a container
+    async fn start_session_for_container(&mut self, id: &str, attach: bool) {
         if let Some(runtime) = &self.exec_runtime {
             if runtime.container_id == id {
                 self.state.close_exec_view();
@@ -1577,6 +1587,7 @@ impl App {
 
         self.state
             .open_exec_view(id.to_string(), container_name.clone());
+        self.state.set_exec_attach(attach);
         self.state
             .set_exec_status(format_exec_start_status(spinner::frame(0)));
 
@@ -1613,17 +1624,26 @@ impl App {
                 return;
             }
 
-            let cmd = select_exec_command(&defaults.entrypoint, &defaults.cmd);
-            let exec = match client
-                .start_exec_session(&defaults.container_id, cmd, cols, rows)
-                .await
-            {
+            let started = if attach {
+                client
+                    .start_attach_session(&defaults.container_id, cols, rows)
+                    .await
+            } else {
+                let cmd = select_exec_command(&defaults.entrypoint, &defaults.cmd);
+                client
+                    .start_exec_session(&defaults.container_id, cmd, cols, rows)
+                    .await
+            };
+            let exec = match started {
                 Ok(exec) => exec,
                 Err(e) => {
                     let _ = tx
                         .send(ExecStartResult::Failed {
                             container_id: defaults.container_id,
-                            message: format!("Failed to start exec: {e}"),
+                            message: format!(
+                                "Failed to {}: {e}",
+                                if attach { "attach" } else { "start exec" }
+                            ),
                         })
                         .await;
                     return;
@@ -1717,11 +1737,18 @@ impl App {
                                 exec_view.container_name = container_name;
                             }
                             self.state.set_exec_status("Running");
-                            self.state
-                                .add_notification("Exec started", NotificationLevel::Info);
+                            self.state.add_notification(
+                                if exec.attach {
+                                    "Attached (detach with ctrl-p ctrl-q)"
+                                } else {
+                                    "Exec started"
+                                },
+                                NotificationLevel::Info,
+                            );
 
                             self.exec_runtime = Some(ExecRuntime {
                                 exec_id: exec.exec_id,
+                                attach: exec.attach,
                                 container_id,
                                 input: exec.input,
                                 parser,
@@ -1808,10 +1835,18 @@ impl App {
         }
 
         if end {
+            let attached = self
+                .state
+                .exec_view
+                .as_ref()
+                .map(|v| v.attach)
+                .unwrap_or(false);
             self.state.close_exec_view();
             self.exec_runtime = None;
-            self.state
-                .add_notification("Exec ended", NotificationLevel::Info);
+            self.state.add_notification(
+                if attached { "Detached" } else { "Exec ended" },
+                NotificationLevel::Info,
+            );
         }
     }
 
@@ -1824,9 +1859,15 @@ impl App {
                 runtime.size = (cols, rows);
                 runtime.parser.set_size(rows, cols);
                 if let Some(client) = &self.docker_client {
-                    let _ = client
-                        .resize_exec_session(&runtime.exec_id, cols, rows)
-                        .await;
+                    let _ = if runtime.attach {
+                        client
+                            .resize_attach_session(&runtime.container_id, cols, rows)
+                            .await
+                    } else {
+                        client
+                            .resize_exec_session(&runtime.exec_id, cols, rows)
+                            .await
+                    };
                 }
             }
         }

@@ -2,7 +2,7 @@
 
 use std::pin::Pin;
 
-use bollard::container::LogOutput;
+use bollard::container::{AttachContainerOptions, LogOutput, ResizeContainerTtyOptions};
 use bollard::exec::{CreateExecOptions, ResizeExecOptions, StartExecOptions, StartExecResults};
 use futures::Stream;
 use futures::StreamExt;
@@ -23,7 +23,10 @@ pub struct ExecDefaults {
 
 /// Active exec session handles
 pub struct ExecStart {
+    /// Exec id, or the container id for an attach session
     pub exec_id: String,
+    /// True for an attach to the container's main process, false for an exec
+    pub attach: bool,
     pub output: Pin<Box<dyn Stream<Item = Result<LogOutput>> + Send>>,
     pub input: Pin<Box<dyn AsyncWrite + Send>>,
 }
@@ -145,6 +148,7 @@ impl DockerClient {
         match started {
             StartExecResults::Attached { output, input } => Ok(ExecStart {
                 exec_id: exec.id,
+                attach: false,
                 output: Box::pin(
                     output
                         .map(|item| item.map_err(|e| DockerError::Container(e.to_string()).into())),
@@ -155,6 +159,65 @@ impl DockerClient {
                 Err(DockerError::Container("Exec detached unexpectedly".to_string()).into())
             }
         }
+    }
+
+    /// Attach to the container's main process (stdin, stdout and stderr).
+    ///
+    /// Detach with ctrl-p ctrl-q, as `docker attach` does.
+    pub async fn start_attach_session(
+        &self,
+        container_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<ExecStart> {
+        let options = AttachContainerOptions::<String> {
+            stdin: Some(true),
+            stdout: Some(true),
+            stderr: Some(true),
+            stream: Some(true),
+            logs: Some(false),
+            detach_keys: Some("ctrl-p,ctrl-q".to_string()),
+        };
+
+        let attached = self
+            .inner()
+            .attach_container(container_id, Some(options))
+            .await
+            .map_err(|e| DockerError::Container(format!("Failed to attach: {e}")))?;
+
+        // Best effort: only meaningful for containers with a TTY
+        let _ = self.resize_attach_session(container_id, cols, rows).await;
+
+        Ok(ExecStart {
+            exec_id: container_id.to_string(),
+            attach: true,
+            output: Box::pin(
+                attached
+                    .output
+                    .map(|item| item.map_err(|e| DockerError::Container(e.to_string()).into())),
+            ),
+            input: attached.input,
+        })
+    }
+
+    /// Resize the TTY of an attached container
+    pub async fn resize_attach_session(
+        &self,
+        container_id: &str,
+        cols: u16,
+        rows: u16,
+    ) -> Result<()> {
+        self.inner()
+            .resize_container_tty(
+                container_id,
+                ResizeContainerTtyOptions {
+                    width: cols,
+                    height: rows,
+                },
+            )
+            .await
+            .map_err(|e| DockerError::Container(format!("Failed to resize: {e}")))?;
+        Ok(())
     }
 
     /// Resize an exec TTY session
