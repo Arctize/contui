@@ -1,6 +1,6 @@
 //! Network operations
 
-use bollard::network::ListNetworksOptions;
+use bollard::query_parameters::{ListNetworksOptionsBuilder, PruneNetworksOptionsBuilder};
 use tracing::{debug, info};
 
 use crate::core::{DockerError, NetworkScope, NetworkSummary, Result};
@@ -11,9 +11,7 @@ impl DockerClient {
     pub async fn list_networks(&self) -> Result<Vec<NetworkSummary>> {
         debug!("Listing networks");
 
-        let options = ListNetworksOptions::<String> {
-            filters: Default::default(),
-        };
+        let options = ListNetworksOptionsBuilder::new().build();
 
         let networks = self
             .inner()
@@ -46,7 +44,7 @@ impl DockerClient {
         // Use empty filters to prune all unused networks
         let filters: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        let options = bollard::network::PruneNetworksOptions { filters };
+        let options = PruneNetworksOptionsBuilder::new().filters(&filters).build();
         let result = self
             .inner()
             .prune_networks(Some(options))
@@ -77,11 +75,8 @@ impl From<bollard::models::Network> for NetworkSummary {
             .and_then(|config| config.subnet.clone())
             .unwrap_or_else(|| "-".to_string());
 
-        // Get connected containers
-        let connected_containers = n
-            .containers
-            .map(|c| c.into_keys().collect())
-            .unwrap_or_default();
+        // The list endpoint does not report connected containers
+        let connected_containers = Vec::new();
 
         Self {
             id: n.id.clone().unwrap_or_default(),

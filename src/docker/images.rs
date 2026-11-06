@@ -1,6 +1,8 @@
 //! Image operations
 
-use bollard::image::{ListImagesOptions, RemoveImageOptions};
+use bollard::query_parameters::{
+    ListImagesOptionsBuilder, PruneImagesOptionsBuilder, RemoveImageOptionsBuilder,
+};
 use tracing::{debug, info};
 
 use crate::core::{DockerError, ImageSummary, Result};
@@ -11,10 +13,7 @@ impl DockerClient {
     pub async fn list_images(&self, all: bool) -> Result<Vec<ImageSummary>> {
         debug!("Listing images (all={})", all);
 
-        let options = ListImagesOptions::<String> {
-            all,
-            ..Default::default()
-        };
+        let options = ListImagesOptionsBuilder::new().all(all).build();
 
         let images = self
             .inner()
@@ -31,10 +30,7 @@ impl DockerClient {
     pub async fn remove_image(&self, id: &str, force: bool) -> Result<()> {
         info!("Removing image: {} (force={})", id, force);
 
-        let options = RemoveImageOptions {
-            force,
-            ..Default::default()
-        };
+        let options = RemoveImageOptionsBuilder::new().force(force).build();
 
         self.inner()
             .remove_image(id, Some(options), None)
@@ -54,7 +50,9 @@ impl DockerClient {
 
         let result = self
             .inner()
-            .prune_images(Some(bollard::image::PruneImagesOptions { filters }))
+            .prune_images(Some(
+                PruneImagesOptionsBuilder::new().filters(&filters).build(),
+            ))
             .await
             .map_err(|e| DockerError::Image(format!("Failed to prune images: {}", e)))?;
 
@@ -80,7 +78,7 @@ impl From<bollard::models::ImageSummary> for ImageSummary {
             created: chrono::DateTime::from_timestamp(i.created, 0).unwrap_or(chrono::Utc::now()),
             size: i.size,
             shared_size: i.shared_size,
-            virtual_size: i.virtual_size.unwrap_or(i.size),
+            virtual_size: i.size,
             labels: i.labels,
             containers: i.containers as i32,
             dangling,

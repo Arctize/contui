@@ -1,6 +1,8 @@
 //! Volume operations
 
-use bollard::volume::ListVolumesOptions;
+use bollard::query_parameters::{
+    ListVolumesOptionsBuilder, PruneVolumesOptionsBuilder, RemoveVolumeOptionsBuilder,
+};
 use tracing::{debug, info};
 
 use crate::core::{DockerError, Result, VolumeScope, VolumeSummary};
@@ -11,9 +13,7 @@ impl DockerClient {
     pub async fn list_volumes(&self) -> Result<Vec<VolumeSummary>> {
         debug!("Listing volumes");
 
-        let options = ListVolumesOptions::<String> {
-            filters: Default::default(),
-        };
+        let options = ListVolumesOptionsBuilder::new().build();
 
         let volumes = self
             .inner()
@@ -32,7 +32,10 @@ impl DockerClient {
         info!("Removing volume: {} (force={})", name, force);
 
         self.inner()
-            .remove_volume(name, Some(bollard::volume::RemoveVolumeOptions { force }))
+            .remove_volume(
+                name,
+                Some(RemoveVolumeOptionsBuilder::new().force(force).build()),
+            )
             .await
             .map_err(|e| DockerError::Volume(format!("Failed to remove {}: {}", name, e)))?;
 
@@ -47,7 +50,7 @@ impl DockerClient {
         // Use empty filters to prune all unused volumes
         let filters: std::collections::HashMap<String, Vec<String>> =
             std::collections::HashMap::new();
-        let options = bollard::volume::PruneVolumesOptions { filters };
+        let options = PruneVolumesOptionsBuilder::new().filters(&filters).build();
 
         let result = self
             .inner()
