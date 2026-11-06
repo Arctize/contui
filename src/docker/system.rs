@@ -181,29 +181,183 @@ impl DockerClient {
 
 /// Parse SystemDataUsageResponse into our SystemDiskUsage.
 ///
-/// The engine (API >= 1.52) reports per-category summaries, so no per-item
-/// walk is needed.
+/// Docker (API >= 1.52) reports per-category summaries. Engines that only
+/// list the items (such as Podman) get totals derived from those items.
 fn parse_disk_usage(response: SystemDataUsageResponse) -> SystemDiskUsage {
-    fn resource(total: Option<i64>, reclaimable: Option<i64>, count: Option<i64>) -> ResourceUsage {
+    use serde_json::Value;
+
+    fn int(item: &Value, key: &str) -> i64 {
+        item.get(key).and_then(Value::as_i64).unwrap_or(0)
+    }
+
+    /// Sum `size(item)` over all items, and over the items where `reclaim(item)`.
+    fn sums(
+        items: &[Value],
+        size: impl Fn(&Value) -> i64,
+        reclaim: impl Fn(&Value) -> bool,
+    ) -> (i64, i64) {
+        items.iter().fold((0, 0), |(total, reclaimable), item| {
+            let n = size(item);
+            (total + n, reclaimable + if reclaim(item) { n } else { 0 })
+        })
+    }
+
+    fn resource(
+        summary: (Option<i64>, Option<i64>, Option<i64>), // total, reclaimable, count
+        items: Option<&Vec<Value>>,
+        derive: impl Fn(&[Value]) -> (i64, i64),
+    ) -> ResourceUsage {
+        let items = items.map(Vec::as_slice).unwrap_or(&[]);
+        let (total, reclaimable, count) = summary;
+        let derived = if total.is_none() || reclaimable.is_none() {
+            derive(items)
+        } else {
+            (0, 0)
+        };
         ResourceUsage {
-            total: total.unwrap_or(0),
-            reclaimable: reclaimable.unwrap_or(0),
-            count: count.unwrap_or(0),
+            total: total.unwrap_or(derived.0),
+            reclaimable: reclaimable
+                .unwrap_or(derived.1)
+                .min(total.unwrap_or(derived.0)),
+            count: count.unwrap_or(items.len() as i64),
         }
     }
 
     let mut usage = SystemDiskUsage::default();
     if let Some(u) = response.image_usage {
-        usage.images = resource(u.total_size, u.reclaimable, u.total_count);
+        usage.images = resource(
+            (u.total_size, u.reclaimable, u.total_count),
+            u.items.as_ref(),
+            // untagged images that no container uses are reclaimable. Image
+            // sizes overlap through shared layers, so be conservative.
+            |items| {
+                sums(
+                    items,
+                    |i| int(i, "Size"),
+                    |i| {
+                        int(i, "Containers") == 0
+                            && i.get("RepoTags")
+                                .and_then(Value::as_array)
+                                .map_or(true, |t| t.is_empty())
+                    },
+                )
+            },
+        );
     }
     if let Some(u) = response.container_usage {
-        usage.containers = resource(u.total_size, u.reclaimable, u.total_count);
+        usage.containers = resource(
+            (u.total_size, u.reclaimable, u.total_count),
+            u.items.as_ref(),
+            // stopped containers are reclaimable
+            |items| {
+                sums(
+                    items,
+                    |i| int(i, "SizeRw"),
+                    |i| i.get("State").and_then(Value::as_str) != Some("running"),
+                )
+            },
+        );
     }
     if let Some(u) = response.volume_usage {
-        usage.volumes = resource(u.total_size, u.reclaimable, u.total_count);
+        usage.volumes = resource(
+            (u.total_size, u.reclaimable, u.total_count),
+            u.items.as_ref(),
+            // volumes without references are reclaimable; size -1 means unknown
+            |items| {
+                let usage_int = |i: &Value, key: &str| {
+                    i.get("UsageData")
+                        .and_then(|d| d.get(key))
+                        .and_then(Value::as_i64)
+                        .unwrap_or(-1)
+                };
+                sums(
+                    items,
+                    |i| usage_int(i, "Size").max(0),
+                    |i| usage_int(i, "RefCount") == 0,
+                )
+            },
+        );
     }
     if let Some(u) = response.build_cache_usage {
-        usage.build_cache = resource(u.total_size, u.reclaimable, u.total_count);
+        usage.build_cache = resource(
+            (u.total_size, u.reclaimable, u.total_count),
+            u.items.as_ref(),
+            |items| {
+                sums(
+                    items,
+                    |i| int(i, "Size"),
+                    |i| i.get("InUse").and_then(Value::as_bool) == Some(false),
+                )
+            },
+        );
     }
     usage
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn parse(v: serde_json::Value) -> SystemDiskUsage {
+        parse_disk_usage(serde_json::from_value(v).unwrap())
+    }
+
+    #[test]
+    fn uses_engine_summaries() {
+        let u = parse(json!({
+            "ImageUsage": {"TotalSize": 100, "Reclaimable": 40, "TotalCount": 3},
+            "ContainerUsage": {"TotalSize": 10, "Reclaimable": 10, "TotalCount": 2},
+            "VolumeUsage": {"TotalSize": 7, "Reclaimable": 5, "TotalCount": 1},
+            "BuildCacheUsage": {"TotalSize": 9, "Reclaimable": 8, "TotalCount": 4},
+        }));
+        assert_eq!(
+            (u.images.total, u.images.reclaimable, u.images.count),
+            (100, 40, 3)
+        );
+        assert_eq!((u.containers.total, u.containers.count), (10, 2));
+        assert_eq!((u.volumes.total, u.volumes.reclaimable), (7, 5));
+        assert_eq!((u.build_cache.total, u.build_cache.reclaimable), (9, 8));
+        assert_eq!(u.total_reclaimable(), 63);
+    }
+
+    #[test]
+    fn derives_totals_from_items_when_no_summary() {
+        // Shape reported by Podman: items only, plus an image total
+        let u = parse(json!({
+            "ImageUsage": {"TotalSize": 500, "Items": [
+                {"Size": 300, "Containers": 0, "RepoTags": null},
+                {"Size": 400, "Containers": 0, "RepoTags": ["a:1"]},
+                {"Size": 200, "Containers": 1, "RepoTags": []}]},
+            "ContainerUsage": {"Items": [
+                {"SizeRw": 5, "State": "running"}, {"SizeRw": 7, "State": "exited"}]},
+            "VolumeUsage": {"Items": [
+                {"UsageData": {"Size": 50, "RefCount": 0}},
+                {"UsageData": {"Size": 30, "RefCount": 2}},
+                {"UsageData": {"Size": -1, "RefCount": -1}}]},
+            "BuildCacheUsage": {"Items": []},
+        }));
+        assert_eq!(u.images.total, 500);
+        assert_eq!(u.images.reclaimable, 300);
+        assert_eq!(u.images.count, 3);
+        assert_eq!(
+            (
+                u.containers.total,
+                u.containers.reclaimable,
+                u.containers.count
+            ),
+            (12, 7, 2)
+        );
+        assert_eq!(
+            (u.volumes.total, u.volumes.reclaimable, u.volumes.count),
+            (80, 50, 3)
+        );
+        assert_eq!(u.build_cache.total, 0);
+    }
+
+    #[test]
+    fn empty_response_is_zero() {
+        let u = parse(json!({}));
+        assert_eq!(u.total_size(), 0);
+    }
 }
