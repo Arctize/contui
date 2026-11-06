@@ -20,21 +20,26 @@ impl DockerClient {
         let docker = Docker::connect_with_local_defaults()
             .map_err(|e| DockerError::Connection(e.to_string()))?;
 
-        Self::new(docker).await
+        Self::new(docker, "local").await
     }
 
-    /// Create a new client with custom host
+    /// Create a new client with custom host.
+    ///
+    /// Supports `unix://`, `tcp://`/`http://`, `https://` and `ssh://` hosts.
+    /// A host without a scheme is treated as an ssh destination, so `myserver`
+    /// and `user@myserver` mean `ssh://myserver` and `ssh://user@myserver`.
     pub async fn with_host(host: &str) -> Result<Self> {
+        let host = normalize_host(host);
         info!("Creating Docker client with host: {}", host);
 
-        let docker = Docker::connect_with_http(host, 120, bollard::API_DEFAULT_VERSION)
-            .map_err(|e| DockerError::Connection(e.to_string()))?;
+        let docker =
+            Docker::connect_with_host(&host).map_err(|e| DockerError::Connection(e.to_string()))?;
 
-        Self::new(docker).await
+        Self::new(docker, &host).await
     }
 
     /// Internal constructor
-    async fn new(docker: Docker) -> Result<Self> {
+    async fn new(docker: Docker, host: &str) -> Result<Self> {
         debug!("Fetching Docker version information");
 
         let version = docker
@@ -43,7 +48,7 @@ impl DockerClient {
             .map_err(|e| DockerError::Connection(e.to_string()))?;
 
         let info = ConnectionInfo {
-            host: "local".to_string(), // Docker doesn't expose host URL directly
+            host: host.to_string(), // Docker doesn't expose host URL directly
             version: version.version.unwrap_or_else(|| "unknown".to_string()),
             api_version: version.api_version.unwrap_or_else(|| "unknown".to_string()),
             os: version.os.unwrap_or_else(|| "unknown".to_string()),
@@ -85,9 +90,34 @@ impl DockerClient {
     }
 }
 
+/// Turn a user supplied host into a URL: anything without a scheme (and that
+/// is not an absolute socket path) is an ssh destination.
+fn normalize_host(host: &str) -> String {
+    let host = host.trim();
+    if host.contains("://") {
+        host.to_string()
+    } else if host.starts_with('/') {
+        format!("unix://{host}")
+    } else {
+        format!("ssh://{host}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_host_adds_scheme() {
+        assert_eq!(normalize_host("myserver"), "ssh://myserver");
+        assert_eq!(normalize_host(" me@box:2222 "), "ssh://me@box:2222");
+        assert_eq!(
+            normalize_host("/run/docker.sock"),
+            "unix:///run/docker.sock"
+        );
+        assert_eq!(normalize_host("tcp://10.0.0.5:2375"), "tcp://10.0.0.5:2375");
+        assert_eq!(normalize_host("ssh://box"), "ssh://box");
+    }
 
     // Note: These tests require Docker to be running
     // Mark them with #[ignore] for CI environments without Docker
