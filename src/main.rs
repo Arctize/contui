@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use tracing::{debug, info, warn};
 
 use contui::app::App;
-use contui::config::Config;
+use contui::config::{Config, Runtime};
 use contui::core::ConnectionInfo;
 use contui::docker::DockerClient;
 use contui::update::{
@@ -27,6 +27,10 @@ struct Cli {
     /// Docker host to connect to
     #[arg(short = 'H', long, value_name = "HOST", global = true)]
     host: Option<String>,
+
+    /// Container engine for local connections
+    #[arg(long, value_enum, global = true)]
+    runtime: Option<Runtime>,
 
     /// Enable debug logging to file
     #[arg(short, long, global = true)]
@@ -337,15 +341,15 @@ fn apply_cli_overrides(mut config: Config, cli: &Cli) -> Config {
     if let Some(host) = &cli.host {
         config.docker.host = Some(host.clone());
     }
+    if let Some(runtime) = cli.runtime {
+        config.docker.runtime = runtime;
+    }
     config
 }
 
 async fn check_docker_connection(config: &Config) -> anyhow::Result<ConnectionInfo> {
-    let client = if let Some(host) = &config.docker.host {
-        DockerClient::with_host(host).await?
-    } else {
-        DockerClient::from_env().await?
-    };
+    let client =
+        DockerClient::connect(config.docker.host.as_deref(), config.docker.runtime).await?;
 
     client.ping().await?;
     Ok(client.connection_info().clone())

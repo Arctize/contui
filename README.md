@@ -255,6 +255,22 @@ theme = "auto"     # default: follow the terminal's own colours (light or dark)
 reverse video, and keeps green/red/yellow for status. `dark` is accepted as an
 alias for `classic`.
 
+### Podman
+
+Contui also works with Podman through its Docker-compatible API socket. With
+no `--host`, `--runtime auto` (the default) uses the docker socket if there is
+one and otherwise `$XDG_RUNTIME_DIR/podman/podman.sock` or
+`/run/podman/podman.sock`. Force an engine with `--runtime docker|podman` or
+in `config.toml`:
+
+```toml
+[docker]
+runtime = "podman"
+```
+
+The Podman service must be running, e.g. `systemctl --user enable --now
+podman.socket` (rootless) or `systemctl enable --now podman.socket` (rootful).
+
 ### Log File
 
 Logs are written to `/tmp/contui.log` for debugging purposes.
