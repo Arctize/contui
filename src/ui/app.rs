@@ -193,6 +193,10 @@ impl UiApp {
             KeyCode::Char('a') if self.state.current_tab == Tab::Containers => {
                 self.handle_attach_action()
             }
+            KeyCode::Char('g') if self.state.current_tab == Tab::Containers => {
+                self.state.toggle_container_grouping();
+                UiAction::None
+            }
             // Toggle stats follow when stats panel is visible
             KeyCode::Char('f') if self.state.stats_view.is_some() => {
                 self.state.toggle_stats_follow();
@@ -1454,7 +1458,8 @@ impl UiApp {
         };
 
         // Create container list
-        let mut widget = ContainerListWidget::new(self.state.containers.clone());
+        let mut widget = ContainerListWidget::new(self.state.containers.clone())
+            .with_grouping(self.state.group_containers);
         if !self.state.containers.is_empty() {
             widget.set_selected(Some(self.state.container_list_selected));
         }
@@ -1711,7 +1716,7 @@ impl UiApp {
         } else if self.state.show_help {
             Cow::Borrowed(" Press any key to close help ")
         } else if self.state.current_tab == Tab::Containers && !self.state.containers.is_empty() {
-            Cow::Borrowed(" [↑/↓]Select [s]Start [p]Pause [r]Restart [k]Kill [d]Delete [l]Logs [m]Stats [i]Inspect [x]Exec [a]Attach [?]Help [q]Quit ")
+            Cow::Borrowed(" [↑/↓]Select [s]Start [p]Pause [r]Restart [k]Kill [d]Delete [l]Logs [m]Stats [i]Inspect [x]Exec [a]Attach [g]Group [?]Help [q]Quit ")
         } else if self.state.current_tab == Tab::Images && !self.state.images.is_empty() {
             Cow::Borrowed(" [↑/↓]Select [d]Delete [p]Prune [i]Inspect [?]Help [q]Quit ")
         } else if self.state.current_tab == Tab::Volumes && !self.state.volumes.is_empty() {

@@ -33,6 +33,10 @@ pub struct AppState {
     pub compose_list_selected: usize,
     /// Name of the compose project whose services are shown
     pub compose_open: Option<String>,
+    /// Group containers by compose project and service (toggle with `g`)
+    pub group_containers: bool,
+    /// The container list as the daemon returned it (before grouping)
+    pub(crate) fetched_containers: Vec<ContainerSummary>,
 
     // Connection
     pub docker_connected: bool,
@@ -218,6 +222,8 @@ impl AppState {
             network_list_selected: 0,
             compose_list_selected: 0,
             compose_open: None,
+            group_containers: true,
+            fetched_containers: vec![],
             docker_connected: false,
             connection_info: ConnectionInfo::default(),
             disk_usage: None,
@@ -296,7 +302,21 @@ impl AppState {
 
     /// Update containers list
     pub fn update_containers(&mut self, containers: Vec<ContainerSummary>) {
+        // Keep the same container selected when the order changes
+        let selected_id = self
+            .containers
+            .get(self.container_list_selected)
+            .map(|c| c.id.clone());
+
+        self.fetched_containers = containers.clone();
         self.containers = containers;
+        sort_containers(&mut self.containers, self.group_containers);
+        if let Some(index) =
+            selected_id.and_then(|id| self.containers.iter().position(|c| c.id == id))
+        {
+            self.container_list_selected = index;
+        }
+
         // Adjust selection if needed
         if !self.containers.is_empty() {
             if self.container_list_selected >= self.containers.len() {
@@ -308,6 +328,13 @@ impl AppState {
             self.container_list_selected = 0;
             self.selected_container = None;
         }
+    }
+
+    /// Switch between compose-grouped order and the daemon's order
+    pub fn toggle_container_grouping(&mut self) {
+        self.group_containers = !self.group_containers;
+        let containers = self.fetched_containers.clone();
+        self.update_containers(containers);
     }
 
     /// Navigate to next container in list
@@ -954,8 +981,90 @@ impl Default for AppState {
     }
 }
 
+/// Group containers by compose project, then service, then name (containers
+/// outside any project last). Without grouping, or when no container belongs to
+/// a compose project, the daemon's order is kept.
+fn sort_containers(containers: &mut [ContainerSummary], grouped: bool) {
+    if !grouped || !containers.iter().any(|c| c.compose_project.is_some()) {
+        return;
+    }
+    containers.sort_by(|a, b| {
+        let key = |c: &ContainerSummary| {
+            (
+                c.compose_project.is_none(),
+                c.compose_project.clone(),
+                c.compose_service.clone(),
+                c.names.first().cloned(),
+            )
+        };
+        key(a).cmp(&key(b))
+    });
+}
+
 #[cfg(test)]
 mod tests {
+    fn named(
+        id: &str,
+        name: &str,
+        project: Option<&str>,
+        service: Option<&str>,
+    ) -> ContainerSummary {
+        ContainerSummary {
+            id: id.to_string(),
+            names: vec![name.to_string()],
+            compose_project: project.map(String::from),
+            compose_service: service.map(String::from),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn containers_are_grouped_by_project_then_service() {
+        let mut state = AppState::new();
+        state.update_containers(vec![
+            named("1", "solo", None, None),
+            named("2", "b-web-1", Some("b"), Some("web")),
+            named("3", "a-db-1", Some("a"), Some("db")),
+            named("4", "a-app-1", Some("a"), Some("app")),
+        ]);
+        let ids: Vec<&str> = state.containers.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["4", "3", "2", "1"]); // a/app, a/db, b/web, standalone
+
+        // Turning grouping off restores the order the daemon returned
+        state.toggle_container_grouping();
+        assert!(!state.group_containers);
+        let ids: Vec<&str> = state.containers.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["1", "2", "3", "4"]);
+    }
+
+    #[test]
+    fn grouping_does_nothing_without_compose_containers() {
+        let mut state = AppState::new();
+        state.update_containers(vec![
+            named("1", "zeta", None, None),
+            named("2", "alpha", None, None),
+        ]);
+        // Order untouched
+        let ids: Vec<&str> = state.containers.iter().map(|c| c.id.as_str()).collect();
+        assert_eq!(ids, vec!["1", "2"]);
+    }
+
+    #[test]
+    fn selection_follows_the_container_when_order_changes() {
+        let mut state = AppState::new();
+        state.update_containers(vec![
+            named("a", "a", Some("p"), Some("one")),
+            named("b", "b", Some("p"), Some("two")),
+        ]);
+        state.container_list_selected = 1; // "b"
+        state.update_containers(vec![
+            named("b", "b", Some("p"), Some("aaa")), // now sorts first
+            named("a", "a", Some("p"), Some("one")),
+        ]);
+        assert_eq!(state.containers[state.container_list_selected].id, "b");
+        assert_eq!(state.selected_container.as_deref(), Some("b"));
+    }
+
     use super::*;
 
     #[test]

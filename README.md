@@ -138,6 +138,7 @@ contui --help
 | `i` | Inspect container details |
 | `x` | Exec into container |
 | `a` | Attach to the container's main process (detach with `Ctrl+P` `Ctrl+Q`; `Ctrl+C` reaches the process) |
+| `g` | Toggle grouping by compose project (a dim STACK column names each project once) |
 
 ### Compose Tab
 
