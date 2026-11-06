@@ -139,6 +139,19 @@ contui --help
 | `x` | Exec into container |
 | `a` | Attach to the container's main process (detach with `Ctrl+P` `Ctrl+Q`; `Ctrl+C` reaches the process) |
 
+### Compose Tab
+
+Lists the Docker Compose projects found on the host, derived from the labels
+Compose puts on its containers (so it also works over ssh and with Podman, and
+needs no compose files). Each row shows the number of services, how many
+containers are running, and the project directory.
+
+| Key | Action |
+|-----|--------|
+| `↑/↓` or `j/k` | Select a project (or a service) |
+| `Enter` | Show the project's services |
+| `Esc` / `Backspace` | Back to the project list |
+
 ### Images Tab
 
 | Key | Action |

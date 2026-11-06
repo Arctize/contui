@@ -29,6 +29,10 @@ pub struct AppState {
     pub networks: Vec<NetworkSummary>,
     pub selected_network: Option<String>,
     pub network_list_selected: usize,
+    /// Selected row of the Compose tab (projects, or services when one is open)
+    pub compose_list_selected: usize,
+    /// Name of the compose project whose services are shown
+    pub compose_open: Option<String>,
 
     // Connection
     pub docker_connected: bool,
@@ -212,6 +216,8 @@ impl AppState {
             networks: vec![],
             selected_network: None,
             network_list_selected: 0,
+            compose_list_selected: 0,
+            compose_open: None,
             docker_connected: false,
             connection_info: ConnectionInfo::default(),
             disk_usage: None,
@@ -339,6 +345,66 @@ impl AppState {
             self.volume_list_selected = 0;
             self.selected_volume = None;
         }
+    }
+
+    // ==================== Compose Tab Methods ====================
+
+    /// Compose projects, derived from the container labels
+    pub fn compose_projects(&self) -> Vec<crate::core::compose::ComposeProject> {
+        crate::core::compose::group_projects(&self.containers)
+    }
+
+    /// Number of rows in the Compose tab's current list
+    fn compose_rows(&self) -> usize {
+        let projects = self.compose_projects();
+        match &self.compose_open {
+            Some(name) => projects
+                .iter()
+                .find(|p| &p.name == name)
+                .map(|p| p.services.len())
+                .unwrap_or(0),
+            None => projects.len(),
+        }
+    }
+
+    /// Move the Compose tab selection down (wraps)
+    pub fn next_compose(&mut self) {
+        let rows = self.compose_rows();
+        if rows > 0 {
+            self.compose_list_selected = (self.compose_list_selected + 1) % rows;
+        }
+    }
+
+    /// Move the Compose tab selection up (wraps)
+    pub fn previous_compose(&mut self) {
+        let rows = self.compose_rows();
+        if rows > 0 {
+            self.compose_list_selected = (self.compose_list_selected + rows - 1) % rows;
+        }
+    }
+
+    /// Show the services of the selected project
+    pub fn open_compose_project(&mut self) {
+        if self.compose_open.is_none() {
+            if let Some(project) = self.compose_projects().get(self.compose_list_selected) {
+                self.compose_open = Some(project.name.clone());
+                self.compose_list_selected = 0;
+            }
+        }
+    }
+
+    /// Go back from a project's services to the project list, keeping the
+    /// project selected. Returns false if no project was open.
+    pub fn close_compose_project(&mut self) -> bool {
+        let Some(name) = self.compose_open.take() else {
+            return false;
+        };
+        self.compose_list_selected = self
+            .compose_projects()
+            .iter()
+            .position(|p| p.name == name)
+            .unwrap_or(0);
+        true
     }
 
     /// Navigate to next volume in list

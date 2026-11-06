@@ -238,6 +238,18 @@ impl UiApp {
                 UiAction::None
             }
 
+            // Compose tab: drill into a project and back
+            KeyCode::Enter if self.state.current_tab == Tab::Compose => {
+                self.state.open_compose_project();
+                UiAction::None
+            }
+            KeyCode::Esc | KeyCode::Backspace
+                if self.state.current_tab == Tab::Compose && self.state.compose_open.is_some() =>
+            {
+                self.state.close_compose_project();
+                UiAction::None
+            }
+
             // List navigation
             KeyCode::Char('j') => {
                 match self.state.current_tab {
@@ -245,6 +257,7 @@ impl UiApp {
                     Tab::Images => self.state.next_image(),
                     Tab::Volumes => self.state.next_volume(),
                     Tab::Networks => self.state.next_network(),
+                    Tab::Compose => self.state.next_compose(),
                     _ => {}
                 }
                 UiAction::None
@@ -255,6 +268,7 @@ impl UiApp {
                     Tab::Images => self.state.previous_image(),
                     Tab::Volumes => self.state.previous_volume(),
                     Tab::Networks => self.state.previous_network(),
+                    Tab::Compose => self.state.previous_compose(),
                     _ => {}
                 }
                 UiAction::None
@@ -265,6 +279,7 @@ impl UiApp {
                     Tab::Images => self.state.previous_image(),
                     Tab::Volumes => self.state.previous_volume(),
                     Tab::Networks => self.state.previous_network(),
+                    Tab::Compose => self.state.previous_compose(),
                     _ => self.previous_tab(),
                 }
                 UiAction::None
@@ -275,6 +290,7 @@ impl UiApp {
                     Tab::Images => self.state.next_image(),
                     Tab::Volumes => self.state.next_volume(),
                     Tab::Networks => self.state.next_network(),
+                    Tab::Compose => self.state.next_compose(),
                     _ => self.next_tab(),
                 }
                 UiAction::None
@@ -1289,6 +1305,15 @@ impl UiApp {
             Tab::Networks if !self.state.networks.is_empty() => {
                 self.render_networks_view(frame, content_layout[1]);
             }
+            Tab::Compose
+                if self
+                    .state
+                    .containers
+                    .iter()
+                    .any(|c| c.compose_project.is_some()) =>
+            {
+                self.render_compose_view(frame, content_layout[1]);
+            }
             _ => {
                 self.render_main_panel(frame, content_layout[1]);
             }
@@ -1309,6 +1334,52 @@ impl UiApp {
         let mut table_state = ratatui::widgets::TableState::default();
         table_state.select(Some(self.state.volume_list_selected));
         frame.render_stateful_widget(table, area, &mut table_state);
+    }
+
+    /// Render the Compose tab: projects, or the services of the open project
+    fn render_compose_view(&self, frame: &mut Frame, area: Rect) {
+        use crate::ui::components::compose_list;
+
+        // Fill area with black background first
+        let bg = Block::default().style(Style::default().bg(theme::bg()));
+        frame.render_widget(bg, area);
+
+        let projects = self.state.compose_projects();
+        let open = self
+            .state
+            .compose_open
+            .as_ref()
+            .and_then(|name| projects.iter().find(|p| &p.name == name));
+
+        let mut table_state = ratatui::widgets::TableState::default();
+        match open {
+            Some(project) => {
+                let selected = self
+                    .state
+                    .compose_list_selected
+                    .min(project.services.len().saturating_sub(1));
+                table_state.select(Some(selected));
+                frame.render_stateful_widget(
+                    compose_list::services_table(project),
+                    area,
+                    &mut table_state,
+                );
+            }
+            None => {
+                let in_projects: usize = projects.iter().map(|p| p.total).sum();
+                let others = self.state.containers.len().saturating_sub(in_projects);
+                let selected = self
+                    .state
+                    .compose_list_selected
+                    .min(projects.len().saturating_sub(1));
+                table_state.select(Some(selected));
+                frame.render_stateful_widget(
+                    compose_list::projects_table(&projects, others),
+                    area,
+                    &mut table_state,
+                );
+            }
+        }
     }
 
     /// Render networks view
@@ -1489,7 +1560,8 @@ impl UiApp {
                     Tab::Images => format!("Total: {}", self.state.images.len()),
                     Tab::Volumes => format!("Total: {}", self.state.volumes.len()),
                     Tab::Networks => format!("Total: {}", self.state.networks.len()),
-                    Tab::Compose => "Docker Compose\n\nNot yet implemented".to_string(),
+                    Tab::Compose => "No Docker Compose projects found.\n\nContainers started with docker compose (or podman-compose) show up here, grouped by project and service."
+                        .to_string(),
                     Tab::System => unreachable!(),
                     Tab::Containers => {
                         // This should only happen when containers list is empty
@@ -1646,6 +1718,16 @@ impl UiApp {
             Cow::Borrowed(" [↑/↓]Select [d]Delete [p]Prune [?]Help [q]Quit ")
         } else if self.state.current_tab == Tab::Networks && !self.state.networks.is_empty() {
             Cow::Borrowed(" [↑/↓]Select [d]Delete [p]Prune [?]Help [q]Quit ")
+        } else if self.state.current_tab == Tab::Compose && self.state.compose_open.is_some() {
+            Cow::Borrowed(" [↑/↓]Select [Esc]Back [?]Help [q]Quit ")
+        } else if self.state.current_tab == Tab::Compose
+            && self
+                .state
+                .containers
+                .iter()
+                .any(|c| c.compose_project.is_some())
+        {
+            Cow::Borrowed(" [↑/↓]Select [Enter]Services [?]Help [q]Quit ")
         } else {
             Cow::Borrowed(" [←/→ or 1-6]:Switch Tabs | [?]:Help | [q]:Quit ")
         };
@@ -1918,6 +2000,45 @@ mod tests {
             app.state.notifications.last().map(|n| n.message.as_str()),
             Some("Container is not running")
         );
+    }
+
+    #[test]
+    fn compose_tab_drills_into_projects_and_back() {
+        let container = |project: &str, service: &str| crate::core::ContainerSummary {
+            compose_project: Some(project.to_string()),
+            compose_service: Some(service.to_string()),
+            state: crate::core::ContainerState::Running,
+            ..Default::default()
+        };
+        let state = AppState {
+            current_tab: Tab::Compose,
+            containers: vec![
+                container("alpha", "web"),
+                container("beta", "db"),
+                container("beta", "cache"),
+            ],
+            ..Default::default()
+        };
+        let mut app = UiApp::new(state);
+        fn press(app: &mut UiApp, code: crossterm::event::KeyCode) {
+            app.handle_event(crossterm::event::Event::Key(
+                crossterm::event::KeyEvent::from(code),
+            ));
+        }
+
+        press(&mut app, crossterm::event::KeyCode::Down); // alpha -> beta
+        press(&mut app, crossterm::event::KeyCode::Enter);
+        assert_eq!(app.state.compose_open.as_deref(), Some("beta"));
+        assert_eq!(app.state.compose_list_selected, 0);
+
+        press(&mut app, crossterm::event::KeyCode::Down); // cache -> db
+        press(&mut app, crossterm::event::KeyCode::Down); // wraps to cache
+        assert_eq!(app.state.compose_list_selected, 0);
+
+        press(&mut app, crossterm::event::KeyCode::Esc);
+        assert_eq!(app.state.compose_open, None);
+        assert_eq!(app.state.compose_list_selected, 1); // beta stays selected
+        assert_eq!(app.state.current_tab, Tab::Compose);
     }
 
     #[test]
