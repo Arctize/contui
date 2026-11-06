@@ -33,7 +33,11 @@ impl DockerClient {
     /// back to podman when no docker socket exists.
     pub async fn connect(host: Option<&str>, runtime: Runtime) -> Result<Self> {
         if let Some(host) = host {
-            return Self::with_host(host).await;
+            let host = normalize_host(host);
+            if host.starts_with("ssh://") {
+                return Self::connect_ssh(&host, runtime).await;
+            }
+            return Self::with_host(&host).await;
         }
         match runtime {
             Runtime::Docker => Self::from_env().await,
@@ -49,6 +53,35 @@ impl DockerClient {
                 }
             }
         }
+    }
+
+    /// Connect over ssh. The remote program that proxies the API
+    /// (`<program> system dial-stdio`) is `docker` or `podman`; `auto` tries
+    /// docker first and falls back to podman.
+    async fn connect_ssh(host: &str, runtime: Runtime) -> Result<Self> {
+        let programs: &[&str] = match runtime {
+            Runtime::Docker => &["docker"],
+            Runtime::Podman => &["podman"],
+            Runtime::Auto => &["docker", "podman"],
+        };
+
+        let mut first_error = None;
+        for program in programs {
+            info!("Connecting to {} using remote `{}`", host, program);
+            let options = bollard::SshOptions::new().with_remote_program(*program);
+            let docker =
+                Docker::connect_with_ssh_options(host, 120, bollard::API_DEFAULT_VERSION, options)
+                    .map_err(|e| DockerError::Connection(e.to_string()))?;
+
+            match Self::new(docker, host).await {
+                Ok(client) => return Ok(client),
+                Err(e) => {
+                    info!("Remote `{}` on {} failed: {}", program, host, e);
+                    first_error.get_or_insert(e);
+                }
+            }
+        }
+        Err(first_error.expect("at least one remote program is tried"))
     }
 
     /// Connect to the local podman API socket

@@ -37,9 +37,13 @@ impl DockerClient {
 
         debug!("Inspecting image {}", id);
 
-        let inspect = self.inner().inspect_image(id).await.map_err(|e| {
-            ContuiError::Docker(DockerError::Image(format!("Failed to inspect: {}", e)))
-        })?;
+        let inspect = self
+            .inner()
+            .inspect_image(id, None::<bollard::query_parameters::InspectImageOptions>)
+            .await
+            .map_err(|e| {
+                ContuiError::Docker(DockerError::Image(format!("Failed to inspect: {}", e)))
+            })?;
 
         // Get history for layers
         let history = self.inner().image_history(id).await.map_err(|e| {
